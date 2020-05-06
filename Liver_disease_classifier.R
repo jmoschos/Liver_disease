@@ -43,14 +43,23 @@ library(ROCR)
 
 # Dataset loading/generation
 
-##Data reading from my git repository jmoschos
+##Automatic Data reading from my git repository jmoschos
 
-raw_data<-read.csv("https://raw.githubusercontent.com/jmoschos/Pokemon/master/pokemon_data.csv")
+raw_data<-read.csv("https://raw.githubusercontent.com/jmoschos/Liver_disease/master/indian_liver_patient.csv")
+
+
+
+## Basic manipulation Convert name of target variable to y
+
+raw_data<-raw_data%>%
+  rename(y=Dataset)
+
+
 
 ## Data splitting 80% for train and 20% for test
 
 ## Making an index for the train set.
-train_index<-createDataPartition(raw_data$status, p = 0.8, times = 1, list= FALSE)
+train_index<-createDataPartition(raw_data$y, p = 0.8, times = 1, list= FALSE)
 
 ## Creating the subsets for train and test
 train<-raw_data[train_index,]
@@ -58,4 +67,5 @@ test<-raw_data[-train_index,]
 
 ## Removing the index. No longer required.
 rm(train_index)
+
 
