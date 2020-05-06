@@ -41,21 +41,39 @@ library(ROCR)
 
 
 
-# Dataset loading/generation
+# Dataset loading
 
 ##Automatic Data reading from my git repository jmoschos
 
 raw_data<-read.csv("https://raw.githubusercontent.com/jmoschos/Liver_disease/master/indian_liver_patient.csv")
 
 
-
-## Basic manipulation Convert name of target variable to y
+# Basic manipulations
+## Convert name of target variable to y
 
 raw_data<-raw_data%>%
-  rename(y=Dataset)
+  rename(y=Dataset)%>%
+  mutate(y=y-1)             ##Changing target variable to 0,1 {0 = No disease, 1 = Liver disease}
+
+## Checking the class of the variables:
+str(raw_data)
+
+## Making the y variable into a factor:
+raw_data<-raw_data%>%
+  mutate(y=as.factor(y))
+
+
+## Missing values ? 
+
+sapply(raw_data, function(x) sum(is.na(x)))       ## only albumin and globulin ration has some NA's 
+
+## We will replace the NAs with the mean of the rest of the observations.If there were more outliers, a better choice might have been the median.
+
+raw_data$Albumin_and_Globulin_Ratio<-ifelse(is.na(raw_data$Albumin_and_Globulin_Ratio), mean(raw_data$Albumin_and_Globulin_Ratio,na.rm=TRUE),raw_data$Albumin_and_Globulin_Ratio)     ## if the value is NA, replace it with the mean of the rest of the values (NAs excluded with na.rm argument, otherwise keep it as is)
 
 
 
+# Dataset generation
 ## Data splitting 80% for train and 20% for test
 
 ## Making an index for the train set.
@@ -67,5 +85,24 @@ test<-raw_data[-train_index,]
 
 ## Removing the index. No longer required.
 rm(train_index)
+
+
+
+# Exploratory data analysis
+
+## Lets examine our target variable y
+
+raw_data%>%
+  ggplot(aes(y))+
+  geom_bar()
+
+
+
+
+
+
+
+
+
 
 
