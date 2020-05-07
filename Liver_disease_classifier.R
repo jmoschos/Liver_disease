@@ -61,11 +61,10 @@ raw_data<-raw_data%>%
   mutate(y=y-1)             ##Changing target variable to 0,1 {0 = No disease, 1 = Liver disease}
 
 
-
 ## Checking the class of the variables:
 str(raw_data)
 
-## Making the y variable into a factor:
+## Making the y and gender variables into factors
 raw_data<-raw_data%>%
   mutate(y=as.factor(y))%>%
   mutate(Gender=ifelse(Gender=="Male","0","1"))%>%
@@ -82,11 +81,15 @@ raw_data$Albumin_and_Globulin_Ratio<-ifelse(is.na(raw_data$Albumin_and_Globulin_
 
 
 
+
+
+
+
 # Dataset generation
 ## Data splitting 80% for train and 20% for test
 
 ## Making an index for the train set.
-train_index<-createDataPartition(raw_data$y, p = 0.8, times = 1, list= FALSE)
+train_index<-createDataPartition(raw_data$y, p = 0.9, times = 1, list= FALSE)
 
 ## Creating the subsets for train and test
 train<-raw_data[train_index,]
@@ -115,10 +118,14 @@ rm(train_index)
 
 raw_data%>%
   ggplot(aes(y))+
-  geom_bar()
+  geom_bar()+
+  labs(title = "Liver disease prevalence",
+       x = "Disease",
+       y= "Number of people")+
+  scale_x_discrete(labels = c("No disease", "Liver disease"))
 
 
-mean(raw_data$y==1)     ##Underepresented liver disease 28%.
+mean(raw_data$y==1)     ##Under-represented liver disease ~28%.
 
 
 
@@ -151,7 +158,6 @@ raw_data%>%
 
 ## It appears that females (while being under-represented, have a slightly higher disease to no-disease ratio)
 
-
 ## Lets now examine the age distribution in our dataset.
 
 raw_data%>%
@@ -161,6 +167,8 @@ raw_data%>%
         x = "Age",
         y = "Number of people")
 
+## Lets check how the age distribution differs for patients and non-patients
+
 raw_data%>%
   ggplot(aes(x=Age, fill = y))+
   geom_histogram(col="black")+
@@ -169,43 +177,28 @@ raw_data%>%
         y = "Number of people")+
   scale_fill_discrete(name = "Category", labels = c("No disease", "Liver disease"))
 
-##Similar distribution based on age.
+## We observe a similar distribution based on age.
 
 
 
+## For the rest 8 variables, we do not have domain knowledge; To explore the data, we will try to see if there are any obvious cut-off points in any of the variables that will help us predict the liver disease:
 
 
-raw_data%>%
-  ggplot(aes(x=Direct_Bilirubin, y=y))+
-  geom_point()
+plotVar<-function(i){
+  
+  ggplot(aes(x=raw_data[,i],y=y),data=raw_data)+
+    geom_point()+
+    labs( x = names(raw_data[i]))
+}
+
+i<-1:(ncol(raw_data)-1)
+plots<-map(i,plotVar)
 
 
-raw_data%>%
-  ggplot(aes(x=Alkaline_Phosphotase, y=y))+
-  geom_point()
+ggarrange(plotlist=plots,ncol=4, nrow=3)
 
 
-raw_data%>%
-  ggplot(aes(x=Alamine_Aminotransferase, y=y))+
-  geom_point()
 
-
-raw_data%>%
-  ggplot(aes(x=Aspartate_Aminotransferase, y=y))+
-  geom_point()
-
-raw_data%>%
-  ggplot(aes(x=Total_Protiens, y=y))+
-  geom_point()
-
-
-raw_data%>%
-  ggplot(aes(x=Albumin, y=y))+
-  geom_point()
-
-raw_data%>%
-  ggplot(aes(x=Albumin_and_Globulin_Ratio, y=y))+
-  geom_point()
 
 
 
@@ -230,6 +223,7 @@ confusionMatrix(y_hat_nn,test$y)
 fitada<-train(y~.,data=train,method="adaboost")
 y_hat_ada<-predict(fitada,test)
 confusionMatrix(y_hat_ada,test$y)
+
 
 
 
@@ -264,10 +258,12 @@ xgb_params <- list(
   eval_metric = "auc"
 )
 
+##Default
+params <- list(booster = "gbtree", objective = "binary:logistic", eta=0.3, gamma=0, max_depth=6, min_child_weight=1, subsample=1, colsample_bytree=1)
 
 xgb_model <- xgb.train(
   data = xgb_train, 
-  params = xgb_params, 
+  params = params, 
   watchlist = list(test = xgb_test), 
   nrounds = 5000, 
   early_stopping_rounds = 40, 
@@ -283,16 +279,22 @@ xgb.plot.importance(feature_imp_xgb, rel_to_first = TRUE, xlab = "Relative impor
 predictions = predict(
   xgb_model, 
   newdata = as.matrix(test[, colnames(test) != "y"]), 
-  ntreelimit = 500
+  ntreelimit = 5000
 )
 
-pred <- prediction(
-  as.numeric(as.character(predictions)), as.numeric(as.character(test$y))
-)
+
 
 y1<-ifelse(predictions>0.5,"1","0")
 y1<-as.factor(y1)
+
+
 test$y<-as.factor(test$y)
 
 confusionMatrix(y1,test$y)
+
+
+
+confusionMatrix(y1,test$y)
 rm(xgb_test,xgb_train,predictions)
+
+
