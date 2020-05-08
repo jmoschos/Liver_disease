@@ -54,17 +54,22 @@ raw_data<-read.csv("https://raw.githubusercontent.com/jmoschos/Liver_disease/mas
 
 
 # Basic manipulations
-## Convert name of target variable to y
+## Convert name of target variable to y and change its value to binary
 
 raw_data<-raw_data%>%
   rename(y=Dataset)%>%
-  mutate(y=y-1)             ##Changing target variable to 0,1 {0 = No disease, 1 = Liver disease}
+  mutate(y=ifelse(y==2,0,y))  ## Changing target variable to 0,1 {0 = No disease, 1 = Liver disease}  
+                              ## In original file its encoded {1=disease, 2 = No disease}
+
+## Checking that the conversion is done corectly: We need 416 patients with liver disease (y=1) and 167 without (y=0)
+sum(raw_data$y==0)
+sum(raw_data$y==1)
 
 
 ## Checking the class of the variables:
 str(raw_data)
 
-## Making the y and gender variables into factors
+## Making the y and gender variables into factors (for gender, we also change it to a binary variable)
 raw_data<-raw_data%>%
   mutate(y=as.factor(y))%>%
   mutate(Gender=ifelse(Gender=="Male","0","1"))%>%
@@ -125,7 +130,7 @@ raw_data%>%
   scale_x_discrete(labels = c("No disease", "Liver disease"))
 
 
-mean(raw_data$y==1)     ##Under-represented liver disease ~28%.
+mean(raw_data$y==0)     ##Under-represented No liver disease ~28%.
 
 
 
@@ -142,7 +147,7 @@ raw_data%>%
   scale_x_discrete(labels = c("Male","Female"))
 
 ## Its hard to compare between the two categories, but females represent a lower percentage in our dataset.
-## Lets look at percentage data instead for comparison between the two groups.
+## Lets look at percentage data instead, for comparison between the two groups.
 
 
 raw_data%>%
@@ -156,7 +161,7 @@ raw_data%>%
   scale_x_discrete(labels = c("Male","Female"))
 
 
-## It appears that females (while being under-represented, have a slightly higher disease to no-disease ratio)
+## It appears that females (while being under-represented, have a slightly lower disease to no-disease ratio)
 
 ## Lets now examine the age distribution in our dataset.
 
@@ -166,6 +171,8 @@ raw_data%>%
   labs( title = "Age Distribution",
         x = "Age",
         y = "Number of people")
+
+## Age is a rather wide distribution (0-90 year old) with more observations centered around the mean
 
 ## Lets check how the age distribution differs for patients and non-patients
 
@@ -177,27 +184,103 @@ raw_data%>%
         y = "Number of people")+
   scale_fill_discrete(name = "Category", labels = c("No disease", "Liver disease"))
 
-## We observe a similar distribution based on age.
+## We observe a similar distribution based on age.  
 
 
 
 ## For the rest 8 variables, we do not have domain knowledge; To explore the data, we will try to see if there are any obvious cut-off points in any of the variables that will help us predict the liver disease:
 
+## Scatter plots with jitter:
 
+##Function that based on an index i produces the required plot
 plotVar<-function(i){
   
   ggplot(aes(x=raw_data[,i],y=y),data=raw_data)+
-    geom_point()+
+    geom_point(position="jitter")+
     labs( x = names(raw_data[i]))
 }
 
+## i from 1 to max column - 1 (exl the target variable)
 i<-1:(ncol(raw_data)-1)
+
+## Creating the plots and saving them to plots
 plots<-map(i,plotVar)
 
-
+## arranging them in a grid
 ggarrange(plotlist=plots,ncol=4, nrow=3)
 
+## removing plots
+rm(plots)
 
+##Histograms: We exclude the Gender variable that is discrete (factor)
+
+plotHist<-function(i){
+  
+  ggplot(aes(x=raw_data[,i],fill=y),data=raw_data)+
+    geom_histogram(col="yellow")+
+    labs( x = names(raw_data[i]))
+}
+
+
+## index from 1 to max column -1 EXCLUDING gender variable (i==2)
+i<-c(1,3:(ncol(raw_data)-1))
+
+## Creating the plots
+plots<-map(i,plotHist)
+
+##Arranging the plots
+ggarrange(plotlist=plots,ncol=3, nrow=3)
+
+##removing the plots
+rm(plots)
+
+
+## Histograms deep dive: for each variable i (excl. gender) plot histogram for y==0 and y==1 next to each other
+
+PlotHistN<-function(i){
+  
+p0<-raw_data%>%
+  filter(y==0)%>%                                     ##filter for no disease
+  ggplot(aes_string(names(raw_data[i])))+             ## Use string for aesthetic based on index i
+  geom_histogram(fill="coral",col="black")+
+  labs( x = names(raw_data[i]),
+        y = "Number of people",
+        title = "No disease")+
+  ylim(0,sum(raw_data$y==1))+
+  xlim(min(raw_data[,i]),1000)
+  
+p1<-raw_data%>%
+  filter(y==1)%>%
+  ggplot(aes_string(names(raw_data[i])))+
+  geom_histogram(fill="light blue",col="black")+
+  labs( x = names(raw_data[i]),
+        y = "Number of people",
+        title = "Disease")+
+  ylim(0,sum(raw_data$y==1))
+
+plot<-ggarrange(ncol=2,nrow=1,p0,p1)
+
+  
+}
+
+i<-c(1,3:(ncol(raw_data)-1))
+plots<-map(i,PlotHistN)
+
+
+plots[[5]]
+
+
+
+i<-1
+raw_data%>%
+  filter(y==0)%>%                                     ##filter for no disease
+  ggplot(aes_string(names(raw_data[i])))+             ## Use string for aesthetic based on index i
+  geom_histogram(fill="coral",col="black")+
+  labs( x = names(raw_data[i]),
+        y = "Number of people",
+        title = "No disease")+
+  ylim(0,sum(raw_data$y==1))+
+  xlim(min(raw_data[,i])-1,max(raw_data[,i]+1))
 
 
 
