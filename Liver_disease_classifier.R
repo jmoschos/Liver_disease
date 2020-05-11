@@ -20,11 +20,10 @@ if(!require(ROCR)) install.packages("ROCR", repos = "http://cran.us.r-project.or
 if(!require(polycor)) install.packages("polycor", repos = "http://cran.us.r-project.org")
 if(!require(nnet)) install.packages("nnet", repos = "http://cran.us.r-project.org")
 if(!require(varhandle)) install.packages("varhandle", repos = "http://cran.us.r-project.org")
-
+if(!require(reshape2)) install.packages("reshape2", repos = "http://cran.us.r-project.org")
 
 
 # Library loading
-
 
 library(tidyverse)
 library(caret)
@@ -44,6 +43,7 @@ library(ROCR)
 library(polycor)
 library(nnet)
 library(varhandle)
+library(reshape2)
 
 
 # Dataset loading
@@ -88,13 +88,14 @@ raw_data$Albumin_and_Globulin_Ratio<-ifelse(is.na(raw_data$Albumin_and_Globulin_
 
 
 
-
-
 # Dataset generation
-## Data splitting 80% for train and 20% for test
+## Data splitting: 80% for train and 20% for test
+
+##Seed for reproducability
+set.seed(1)
 
 ## Making an index for the train set.
-train_index<-createDataPartition(raw_data$y, p = 0.9, times = 1, list= FALSE)
+train_index<-createDataPartition(raw_data$y, p = 0.8, times = 1, list= FALSE)
 
 ## Creating the subsets for train and test
 train<-raw_data[train_index,]
@@ -102,15 +103,6 @@ test<-raw_data[-train_index,]
 
 ## Removing the index. No longer required.
 rm(train_index)
-
-
-
-
-
-
-
-
-
 
 
 
@@ -130,7 +122,7 @@ raw_data%>%
   scale_x_discrete(labels = c("No disease", "Liver disease"))
 
 
-mean(raw_data$y==0)     ##Under-represented No liver disease ~28%.
+mean(raw_data$y==0)     ##Under-represented No liver disease ~28.6%.
 
 
 
@@ -154,7 +146,7 @@ raw_data%>%
   group_by(Gender,y)%>%
   ggplot(aes(x=Gender,fill=y))+
   geom_bar(position="fill")+
-  labs( title = "Prevalence of disease based on gender",
+  labs( title = "Scaled Prevalence of disease based on gender",
         x = "Gender",
         y = "Percentage of instances")+
   scale_fill_discrete(name = "Category", labels = c("No disease", "Liver disease"))+
@@ -200,7 +192,7 @@ plotVar<-function(i){
     labs( x = names(raw_data[i]))
 }
 
-## i from 1 to max column - 1 (exl the target variable)
+## i from 1 to max column - 1 (exluding the target variable)
 i<-1:(ncol(raw_data)-1)
 
 ## Creating the plots and saving them to plots
@@ -218,7 +210,8 @@ plotHist<-function(i){
   
   ggplot(aes(x=raw_data[,i],fill=y),data=raw_data)+
     geom_histogram(col="yellow")+
-    labs( x = names(raw_data[i]))
+    labs( x = names(raw_data[i]),
+          y = "Count")
 }
 
 
@@ -231,71 +224,111 @@ plots<-map(i,plotHist)
 ##Arranging the plots
 ggarrange(plotlist=plots,ncol=3, nrow=3)
 
-##removing the plots
-rm(plots)
-
-
-## Histograms deep dive: for each variable i (excl. gender) plot histogram for y==0 and y==1 next to each other
-
-PlotHistN<-function(i){
-  
-p0<-raw_data%>%
-  filter(y==0)%>%                                     ##filter for no disease
-  ggplot(aes_string(names(raw_data[i])))+             ## Use string for aesthetic based on index i
-  geom_histogram(fill="coral",col="black")+
-  labs( x = names(raw_data[i]),
-        y = "Number of people",
-        title = "No disease")+
-  ylim(0,sum(raw_data$y==1))+
-  xlim(min(raw_data[,i]),1000)
-  
-p1<-raw_data%>%
-  filter(y==1)%>%
-  ggplot(aes_string(names(raw_data[i])))+
-  geom_histogram(fill="light blue",col="black")+
-  labs( x = names(raw_data[i]),
-        y = "Number of people",
-        title = "Disease")+
-  ylim(0,sum(raw_data$y==1))
-
-plot<-ggarrange(ncol=2,nrow=1,p0,p1)
-
-  
-}
-
-i<-c(1,3:(ncol(raw_data)-1))
-plots<-map(i,PlotHistN)
-
-
-plots[[5]]
+##removing the plots and index variable
+rm(plots,i)
 
 
 
-i<-1
-raw_data%>%
-  filter(y==0)%>%                                     ##filter for no disease
-  ggplot(aes_string(names(raw_data[i])))+             ## Use string for aesthetic based on index i
-  geom_histogram(fill="coral",col="black")+
-  labs( x = names(raw_data[i]),
-        y = "Number of people",
-        title = "No disease")+
-  ylim(0,sum(raw_data$y==1))+
-  xlim(min(raw_data[,i])-1,max(raw_data[,i]+1))
+## Lets check the correlation between all the continuous variables
+
+## Picking only the continuous variables
+corvar<-raw_data[,c(1,3:10)]
+
+##Creating the correlation matrix
+cormatrix<-cor(corvar)
+
+## we are going to use only the upper part of the matrix and leave the rest blank
+cormatrix[upper.tri(cormatrix)]<-NA
+
+## Using reshape library, we are "melting" the matrix into a useable form for a heatmap
+cormatrix<-melt(cormatrix,na.rm = TRUE)
+
+
+
+## Plotting the heatmap of correlation
+cormatrix%>%
+  ggplot(aes(x=Var1,y=Var2,fill=value))+
+  geom_tile(color="white")+
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Pearson\nCorrelation") +
+  theme_minimal()+ 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+                                   size = 12, hjust = 1))+
+  coord_fixed()
+
+
+
+rm(cormatrix,corvar)
 
 
 
 
 
-## Correlation matrix: Target variable is a factor with 2 levels --> we can use the biserial correlation
-i<-1:10
 
-correlation<-sapply(i, function(i){
-  if (colnames(raw_data[i])!="Gender")
-  {
-    polyserial(raw_data[,i],raw_data[,ncol(raw_data)])
-  }
-  else 0
-})
+
+
+## Model building
+
+
+## it seems that most sick patients have values that are much more extreme than that of healthy patients. It might be interesting to explore for the sick patients, how many values of the continuous variables are outside the normal range (normal range is defined as the range observed in healthy patients.)
+
+
+##dummy variable = number of "normal values for other variables". If a patient has a value within the range of a normal patient y=0. In the end we sum the values of these 8 dummy variables for the total number of out-of-bounds variables.
+
+## Find the min and max for healthy patients
+min<-apply(train[train$y==0,],2,min)
+max<-apply(train[train$y==0,],2,max)
+
+## Make these limits into 1 dataframe
+lims<-data.frame(min=min,max=max)
+
+##removing min and max
+rm(min,max)
+
+##Removing age,gender and target variable
+lims<-lims[3:10,]     
+
+##Making the limitis into numeric (and not factor)
+lims<-unfactor(lims) 
+
+##Function to create the 8 dummy variables per patients. Checking if the reading is less than min of a healthy patients or more than the max of a healthy patient
+
+y<-function(i,data){ifelse(data[,i+2]<lims$min[i] | data[,i+2]>lims$max[i],1,0)}
+
+
+
+
+
+## Index i for 1 to number of rows (i.e. variables) in lims ==8
+i<-1:nrow(lims)
+d_train<-sapply(i,y,data=train)
+d_test<-sapply(i,y,data=test)
+
+
+##Calculating the total number of "normal values" for any given patient
+d_train<-rowSums(d_train)
+d_test<-rowSums(d_test)
+
+
+## Binding the original datasets with the new variable we created
+train<-cbind(train,d_train)
+test<-cbind(test,d_test)
+train<-train%>%
+  rename(Number_of_extremes=d_train)
+
+test<-test%>%
+  rename(Number_of_extremes=d_test)
+
+rm(d_test,d_train,i,lims)
+
+
+
+
+
+fittree<-train(y~.,data=train,method="rpart")
+y_hat_tree<-predict(fittree,test)
+confusionMatrix(y_hat_tree,test$y)
 
 
 fitnn<-train(y~.,data=train,method="nnet")
@@ -307,6 +340,21 @@ fitada<-train(y~.,data=train,method="adaboost")
 y_hat_ada<-predict(fitada,test)
 confusionMatrix(y_hat_ada,test$y)
 
+
+
+
+fitsvm<-train(y~.,data=train,method="svmRadial")
+y_hat_svm<-predict(fitsvm,test)
+confusionMatrix(y_hat_svm,test$y)
+
+
+fitknn<-train(y~.,data=train,method="knn")
+y_hat_knn<-predict(fitknn,test)
+confusionMatrix(y_hat_knn,test$y)
+
+fitrf<-train(y~.,data=train,method="rf")
+y_hat_rf<-predict(fitrf,test)
+confusionMatrix(y_hat_rf,test$y)
 
 
 
@@ -377,7 +425,5 @@ confusionMatrix(y1,test$y)
 
 
 
-confusionMatrix(y1,test$y)
-rm(xgb_test,xgb_train,predictions)
 
 
