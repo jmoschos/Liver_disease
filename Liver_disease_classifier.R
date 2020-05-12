@@ -21,7 +21,8 @@ if(!require(polycor)) install.packages("polycor", repos = "http://cran.us.r-proj
 if(!require(nnet)) install.packages("nnet", repos = "http://cran.us.r-project.org")
 if(!require(varhandle)) install.packages("varhandle", repos = "http://cran.us.r-project.org")
 if(!require(reshape2)) install.packages("reshape2", repos = "http://cran.us.r-project.org")
-
+if(!require(e1071)) install.packages("e1071", repos = "http://cran.us.r-project.org")
+if(!require(gbm)) install.packages("gbm", repos = "http://cran.us.r-project.org")
 
 # Library loading
 
@@ -44,7 +45,8 @@ library(polycor)
 library(nnet)
 library(varhandle)
 library(reshape2)
-
+library(e1071)
+library(gbm)
 
 # Dataset loading
 
@@ -78,7 +80,7 @@ raw_data<-raw_data%>%
 
 ## Missing values ? 
 
-sapply(raw_data, function(x) sum(is.na(x)))       ## only albumin and globulin ration has some NA's 
+sapply(raw_data, function(x) sum(is.na(x)))       ## only albumin and globulin ratio has some NA's 
 
 ## We will replace the NAs with the mean of the rest of the observations.If there were more outliers, a better choice might have been the median.
 
@@ -243,8 +245,6 @@ cormatrix[upper.tri(cormatrix)]<-NA
 ## Using reshape library, we are "melting" the matrix into a useable form for a heatmap
 cormatrix<-melt(cormatrix,na.rm = TRUE)
 
-
-
 ## Plotting the heatmap of correlation
 cormatrix%>%
   ggplot(aes(x=Var1,y=Var2,fill=value))+
@@ -257,11 +257,74 @@ cormatrix%>%
                                    size = 12, hjust = 1))+
   coord_fixed()
 
-
-
 rm(cormatrix,corvar)
 
 
+
+
+
+## Feature selection
+
+## Some variables are highly correlated with each other. We are going to select the variables with the minimum variability and remove them from our sets for the model training.
+
+## Examining Total vs. Direct Bilirubin
+
+p1<-train%>%
+  ggplot(aes(x="",y=train[,3]))+
+  geom_boxplot()+
+  geom_point(position="jitter")+
+  labs(title="Total Bilirubin")+
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank())+
+  ylim(0,80)
+
+p2<-train%>%
+  ggplot(aes(x="",y=train[,4]))+
+  geom_boxplot()+
+  geom_point(position="jitter")+
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank())+
+  ylim(0,80)+
+  labs(title="Direct Bilirubin")
+
+ggarrange(p1,p2,ncol=2,nrow=1)
+rm(p1,p2)
+
+## Total bilirubin has a higher variation, so we will keep this
+
+
+## Examining Alamine aminotransferase vs. Aspartate aminostransferase
+
+p1<-train%>%
+  ggplot(aes(x="",y=train[,6]))+
+  geom_boxplot()+
+  geom_point(position="jitter")+
+  labs(title="Alamine aminotransferase ")+
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank())+
+ylim(0,5000)
+
+p2<-train%>%
+  ggplot(aes(x="",y=train[,7]))+
+  geom_boxplot()+
+  geom_point(position="jitter")+
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank())+
+  ylim(0,5000)+
+  labs(title=" Aspartate aminostransferase")
+
+ggarrange(p1,p2,ncol=2,nrow=1)
+
+## Aspartate has a higher variation, so we will remove alamine
+
+
+
+## For albumine, since its highly correlated with both Albumin to Globulin ratio and Total proteins, we will remove it.
+
+## Our final feature selection includes: Age, Gender, Total Bilirubin, Alkaline Phosphotase, Aspartate Aminostransferase, Total Proteins and Albumin/Globulin Ratio
+
+train<-train[,c(1,2,3,5,7,8,10,11)]
+test<-test[,c(1,2,3,5,7,8,10,11)]
 
 
 
@@ -270,91 +333,112 @@ rm(cormatrix,corvar)
 
 ## Model building
 
+## In ALL the models, we have set the seed to 1 for reproducability.
 
-## it seems that most sick patients have values that are much more extreme than that of healthy patients. It might be interesting to explore for the sick patients, how many values of the continuous variables are outside the normal range (normal range is defined as the range observed in healthy patients.)
+## Control = 10-fold cross validation
 
+control<-trainControl(method="cv",number=10)
 
-##dummy variable = number of "normal values for other variables". If a patient has a value within the range of a normal patient y=0. In the end we sum the values of these 8 dummy variables for the total number of out-of-bounds variables.
-
-## Find the min and max for healthy patients
-min<-apply(train[train$y==0,],2,min)
-max<-apply(train[train$y==0,],2,max)
-
-## Make these limits into 1 dataframe
-lims<-data.frame(min=min,max=max)
-
-##removing min and max
-rm(min,max)
-
-##Removing age,gender and target variable
-lims<-lims[3:10,]     
-
-##Making the limitis into numeric (and not factor)
-lims<-unfactor(lims) 
-
-##Function to create the 8 dummy variables per patients. Checking if the reading is less than min of a healthy patients or more than the max of a healthy patient
-
-y<-function(i,data){ifelse(data[,i+2]<lims$min[i] | data[,i+2]>lims$max[i],1,0)}
+## Metric = Accuracy
+metric="Accuracy"
 
 
+## Naive model - Always liver disease
+
+y_hat_naive<-rep.int(1,times=nrow(test))
+y_hat_naive<-as.factor(y_hat_naive)
+confusionMatrix(y_hat_naive,test$y)$overall["Accuracy"]
+
+Res_Naive<-data.frame(method="Naive",results=confusionMatrix(y_hat_naive,test$y)$overall["Accuracy"])
 
 
+## Classification tree
 
-## Index i for 1 to number of rows (i.e. variables) in lims ==8
-i<-1:nrow(lims)
-d_train<-sapply(i,y,data=train)
-d_test<-sapply(i,y,data=test)
-
-
-##Calculating the total number of "normal values" for any given patient
-d_train<-rowSums(d_train)
-d_test<-rowSums(d_test)
-
-
-## Binding the original datasets with the new variable we created
-train<-cbind(train,d_train)
-test<-cbind(test,d_test)
-train<-train%>%
-  rename(Number_of_extremes=d_train)
-
-test<-test%>%
-  rename(Number_of_extremes=d_test)
-
-rm(d_test,d_train,i,lims)
-
-
-
-
-
-fittree<-train(y~.,data=train,method="rpart")
+grid<-expand.grid(cp=seq(0,1,0.001))     ##tuning for complexity parameter
+set.seed(1)
+fittree<-train(y~.,data=train,method="rpart",trControl=control,metric=metric,tuneGrid=grid)
 y_hat_tree<-predict(fittree,test)
-confusionMatrix(y_hat_tree,test$y)
+confusionMatrix(y_hat_tree,test$y)$overall["Accuracy"]
+
+Res_CART<-data.frame(method="Classification tree",results=confusionMatrix(y_hat_tree,test$y)$overall["Accuracy"])
 
 
+
+## Neural network
+
+set.seed(1)
 fitnn<-train(y~.,data=train,method="nnet")
 y_hat_nn<-predict(fitnn,test)
-confusionMatrix(y_hat_nn,test$y)
+confusionMatrix(y_hat_nn,test$y)$overall["Accuracy"]
+
+Res_NN<-data.frame(method="Neural network",results=confusionMatrix(y_hat_nn,test$y)$overall["Accuracy"])
 
 
-fitada<-train(y~.,data=train,method="adaboost")
+
+## Adaboost
+
+grid<-expand.grid(nIter=seq(50,250,50),method="adaboost")     ##Tuning for number of trees
+
+set.seed(1)
+fitada<-train(y~.,data=train,method="adaboost",trControl=control,tuneGrid=grid,verbose=TRUE)
 y_hat_ada<-predict(fitada,test)
-confusionMatrix(y_hat_ada,test$y)
+confusionMatrix(y_hat_ada,test$y)$overall["Accuracy"]
+
+Res_ADA<-data.frame(method="Ada boost",results=confusionMatrix(y_hat_ada,test$y)$overall["Accuracy"])
 
 
 
+##GBM
+grid<-expand.grid(n.trees=seq(50,250,50),interaction.depth=1,shrinkage=seq(0.1,0.5,0.1),n.minobsinnode=seq(5,20,1))
+gbmFit1 <- train(y ~ ., data = train, 
+                 method = "gbm", 
+                 trControl = control,
+                 verbose = TRUE,
+                 tuneGrid = grid)
 
-fitsvm<-train(y~.,data=train,method="svmRadial")
+y_gbm<-predict(gbmFit1,test)
+confusionMatrix(y_gbm,test$y)$overall["Accuracy"]
+
+
+Res_GBM<-data.frame(method="GBM",results=confusionMatrix(y_gbm,test$y)$overall["Accuracy"])
+
+## Support vector machine
+set.seed(1)
+fitsvm<-train(y~.,data=train,method="svmLinear")
 y_hat_svm<-predict(fitsvm,test)
-confusionMatrix(y_hat_svm,test$y)
+confusionMatrix(y_hat_svm,test$y)$overall["Accuracy"]
+
+Res_SVM<-data.frame(method="SVM",results=confusionMatrix(y_hat_svm,test$y)$overall["Accuracy"])
 
 
-fitknn<-train(y~.,data=train,method="knn")
+## K-nearest neighbors
+set.seed(1)
+fitknn<-train(y~.,data=train,method="knn",tuneGrid=expand.grid(k=seq(1:100)))
 y_hat_knn<-predict(fitknn,test)
-confusionMatrix(y_hat_knn,test$y)
+confusionMatrix(y_hat_knn,test$y)$overall["Accuracy"]
 
-fitrf<-train(y~.,data=train,method="rf")
+Res_KNN<-data.frame(method="KNN",results=confusionMatrix(y_hat_knn,test$y)$overall["Accuracy"])
+
+## Random forest model
+set.seed(1)
+fitrf<-train(y~.,data=train,method="rf",tuneGrid=expand.grid(mtry=seq(3,20,1)))
 y_hat_rf<-predict(fitrf,test)
 confusionMatrix(y_hat_rf,test$y)
+
+
+confusionMatrix(y_hat_rf,test$y)$overall["Accuracy"]
+
+Res_RF<-data.frame(method="Random forest",results=confusionMatrix(y_hat_rf,test$y)$overall["Accuracy"])
+
+
+##combining all results
+
+Results<-rbind(Res_ADA,Res_CART,Res_GBM,Res_KNN,Res_Naive,Res_NN,Res_RF,Res_SVM)
+
+## removing individual dataframes
+
+rm(Res_ADA,Res_CART,Res_GBM,Res_KNN,Res_Naive,Res_NN,Res_RF,Res_SVM)
+
 
 
 
@@ -422,6 +506,12 @@ y1<-as.factor(y1)
 test$y<-as.factor(test$y)
 
 confusionMatrix(y1,test$y)
+
+
+
+
+
+
 
 
 
