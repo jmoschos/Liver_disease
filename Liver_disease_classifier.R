@@ -194,14 +194,14 @@ plotVar<-function(i){
     labs( x = names(raw_data[i]))
 }
 
-## i from 1 to max column - 1 (exluding the target variable)
-i<-1:(ncol(raw_data)-1)
+## i from 3 (excl. gender and age) to max column - 1 (exluding the target variable)
+i<-3:(ncol(raw_data)-1)
 
 ## Creating the plots and saving them to plots
 plots<-map(i,plotVar)
 
 ## arranging them in a grid
-ggarrange(plotlist=plots,ncol=4, nrow=3)
+ggarrange(plotlist=plots,ncol=2, nrow=4)
 
 ## removing plots
 rm(plots)
@@ -219,13 +219,13 @@ plotHist<-function(i){
 
 
 ## index from 1 to max column -1 EXCLUDING gender variable (i==2)
-i<-c(1,3:(ncol(raw_data)-1))
+i<-c(3:(ncol(raw_data)-1))
 
 ## Creating the plots
 plots<-map(i,plotHist)
 
 ##Arranging the plots
-ggarrange(plotlist=plots,ncol=3, nrow=3)
+ggarrange(plotlist=plots,ncol=2, nrow=4)
 
 ##removing the plots and index variable
 rm(plots,i)
