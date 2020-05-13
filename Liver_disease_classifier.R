@@ -48,6 +48,8 @@ library(reshape2)
 library(e1071)
 library(gbm)
 
+
+
 # Dataset loading
 
 ##Automatic Data reading from my git repository jmoschos
@@ -84,8 +86,7 @@ sapply(raw_data, function(x) sum(is.na(x)))       ## only albumin and globulin r
 
 ## We will replace the NAs with the mean of the rest of the observations.If there were more outliers, a better choice might have been the median.
 
-raw_data$Albumin_and_Globulin_Ratio<-ifelse(is.na(raw_data$Albumin_and_Globulin_Ratio), mean(raw_data$Albumin_and_Globulin_Ratio,na.rm=TRUE),raw_data$Albumin_and_Globulin_Ratio)     ## if the value is NA, replace it with the mean of the rest of the values (NAs excluded with na.rm argument, otherwise keep it as is)
-
+raw_data$Albumin_and_Globulin_Ratio<-ifelse(is.na(raw_data$Albumin_and_Globulin_Ratio), mean(raw_data$Albumin_and_Globulin_Ratio,na.rm=TRUE),raw_data$Albumin_and_Globulin_Ratio)     ## if the value is NA, replace it with the mean of the rest of the values                                                       ## (NAs excluded with na.rm argument, otherwise keep it as is)
 
 
 
@@ -105,7 +106,6 @@ test<-raw_data[-train_index,]
 
 ## Removing the index. No longer required.
 rm(train_index)
-
 
 
 
@@ -206,14 +206,15 @@ ggarrange(plotlist=plots,ncol=4, nrow=3)
 ## removing plots
 rm(plots)
 
-##Histograms: We exclude the Gender variable that is discrete (factor)
+##Histograms: We exclude the Gender variable that is categorical (factor)
 
 plotHist<-function(i){
   
   ggplot(aes(x=raw_data[,i],fill=y),data=raw_data)+
     geom_histogram(col="yellow")+
     labs( x = names(raw_data[i]),
-          y = "Count")
+          y = "Count")+
+    scale_fill_discrete(name = "Category", labels = c("No disease", "Liver disease"))
 }
 
 
