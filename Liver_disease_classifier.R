@@ -287,7 +287,10 @@ p2<-train%>%
   ylim(0,80)+
   labs(title="Direct Bilirubin")
 
+## Arranging in 1 plot
 ggarrange(p1,p2,ncol=2,nrow=1)
+
+## Removing subplots
 rm(p1,p2)
 
 ## Total bilirubin has a higher variation, so we will keep this
@@ -313,7 +316,11 @@ p2<-train%>%
   ylim(0,5000)+
   labs(title=" Aspartate aminostransferase")
 
+## arranging in 1 plot for comparison
 ggarrange(p1,p2,ncol=2,nrow=1)
+
+## Removing plots
+rm(p1,p2)
 
 ## Aspartate has a higher variation, so we will remove alamine
 
@@ -354,9 +361,15 @@ Res_Naive<-data.frame(method="Naive",results=confusionMatrix(y_hat_naive,test$y)
 
 ## Classification tree
 
-grid<-expand.grid(cp=seq(0,1,0.001))     ##tuning for complexity parameter
 set.seed(1)
-fittree<-train(y~.,data=train,method="rpart",trControl=control,metric=metric,tuneGrid=grid)
+grid<-expand.grid(cp=seq(0,1,0.001))     ##tuning for complexity parameter
+fittree<-train(y~.,
+               data=train,
+               method="rpart",
+               trControl=control,
+               metric=metric,
+               tuneGrid=grid)
+
 y_hat_tree<-predict(fittree,test)
 confusionMatrix(y_hat_tree,test$y)$overall["Accuracy"]
 
@@ -367,7 +380,11 @@ Res_CART<-data.frame(method="Classification tree",results=confusionMatrix(y_hat_
 ## Neural network
 
 set.seed(1)
-fitnn<-train(y~.,data=train,method="nnet")
+fitnn<-train(y~.,
+             data=train,
+             method="nnet",
+             trControl=control,
+             metric=metric)
 y_hat_nn<-predict(fitnn,test)
 confusionMatrix(y_hat_nn,test$y)$overall["Accuracy"]
 
@@ -377,34 +394,49 @@ Res_NN<-data.frame(method="Neural network",results=confusionMatrix(y_hat_nn,test
 
 ## Adaboost
 
-grid<-expand.grid(nIter=seq(50,250,50),method="adaboost")     ##Tuning for number of trees
-
 set.seed(1)
-fitada<-train(y~.,data=train,method="adaboost",trControl=control,tuneGrid=grid,verbose=TRUE)
+grid<-expand.grid(nIter=seq(50,250,50),method="adaboost")     ##Tuning for number of trees
+fitada<-train(y~.,
+              data=train,
+              method="adaboost",
+              trControl=control,
+              tuneGrid=grid,
+              metric=metric)
+
 y_hat_ada<-predict(fitada,test)
 confusionMatrix(y_hat_ada,test$y)$overall["Accuracy"]
 
 Res_ADA<-data.frame(method="Ada boost",results=confusionMatrix(y_hat_ada,test$y)$overall["Accuracy"])
 
 
-
 ##GBM
-grid<-expand.grid(n.trees=seq(50,250,50),interaction.depth=1,shrinkage=seq(0.1,0.5,0.1),n.minobsinnode=seq(5,20,1))
+
+set.seed(1)
+grid<-expand.grid(n.trees=seq(50,250,50),
+                  interaction.depth=1,
+                  shrinkage=seq(0.1,0.5,0.1),
+                  n.minobsinnode=seq(5,20,1))
+
 gbmFit1 <- train(y ~ ., data = train, 
                  method = "gbm", 
                  trControl = control,
                  verbose = TRUE,
-                 tuneGrid = grid)
+                 tuneGrid = grid,
+                 metric=metric)
 
 y_gbm<-predict(gbmFit1,test)
 confusionMatrix(y_gbm,test$y)$overall["Accuracy"]
 
-
 Res_GBM<-data.frame(method="GBM",results=confusionMatrix(y_gbm,test$y)$overall["Accuracy"])
 
 ## Support vector machine
+
 set.seed(1)
-fitsvm<-train(y~.,data=train,method="svmLinear")
+fitsvm<-train(y~.,
+              data=train,
+              method="svmLinear",
+              trControl=control,
+              metric=metric)
 y_hat_svm<-predict(fitsvm,test)
 confusionMatrix(y_hat_svm,test$y)$overall["Accuracy"]
 
@@ -412,108 +444,67 @@ Res_SVM<-data.frame(method="SVM",results=confusionMatrix(y_hat_svm,test$y)$overa
 
 
 ## K-nearest neighbors
+
 set.seed(1)
-fitknn<-train(y~.,data=train,method="knn",tuneGrid=expand.grid(k=seq(1:100)))
+fitknn<-train(y~.,
+              data=train,
+              method="knn",
+              tuneGrid=expand.grid(k=seq(1:100)),
+              trControl=control,
+              metric=metric)
+
 y_hat_knn<-predict(fitknn,test)
 confusionMatrix(y_hat_knn,test$y)$overall["Accuracy"]
 
 Res_KNN<-data.frame(method="KNN",results=confusionMatrix(y_hat_knn,test$y)$overall["Accuracy"])
 
 ## Random forest model
+
 set.seed(1)
-fitrf<-train(y~.,data=train,method="rf",tuneGrid=expand.grid(mtry=seq(3,20,1)))
+fitrf<-train(y~.,
+             data=train,
+             method="rf",
+             tuneGrid=expand.grid(mtry=seq(3,20,1)),
+             trControl=control,
+             metric=metric)
+
 y_hat_rf<-predict(fitrf,test)
-confusionMatrix(y_hat_rf,test$y)
-
-
 confusionMatrix(y_hat_rf,test$y)$overall["Accuracy"]
 
 Res_RF<-data.frame(method="Random forest",results=confusionMatrix(y_hat_rf,test$y)$overall["Accuracy"])
 
 
+## XG BOOST
+
+set.seed(1)
+tune.grid <- expand.grid(eta = c(0.05, 0.075, 0.1),
+                         nrounds = c(50, 75, 100),
+                         max_depth = 6:8,
+                         min_child_weight = c(2.0, 2.25, 2.5),
+                         colsample_bytree = c(0.3, 0.4, 0.5),
+                         gamma = 0,
+                         subsample = 1)
+
+fitxgb <- train(y ~ ., 
+                  data = train,
+                  method = "xgbTree",
+                  tuneGrid = tune.grid,
+                  trControl = control,
+                  metric=metric)
+
+y_xgb<-predict(fitxgb,test)
+confusionMatrix(y_xgb,test$y)$overall["Accuracy"]
+
+Res_XGB<-data.frame(method="XGBoost",results=confusionMatrix(y_xgb,test$y)$overall["Accuracy"])
+
+
+
 ##combining all results
 
-Results<-rbind(Res_ADA,Res_CART,Res_GBM,Res_KNN,Res_Naive,Res_NN,Res_RF,Res_SVM)
+Results<-rbind(Res_ADA,Res_CART,Res_GBM,Res_KNN,Res_Naive,Res_NN,Res_RF,Res_SVM,Res_XGB)
 
 ## removing individual dataframes
 
-rm(Res_ADA,Res_CART,Res_GBM,Res_KNN,Res_Naive,Res_NN,Res_RF,Res_SVM)
-
-
-
-
-## XGBOOST
-
-## Prepare the training dataset and test set
-
-## XG boost works with numeric. We convert the factors to numerics for this algorithm only.
-
-train$Gender<-unfactor(obj=train$Gender)
-train$y<-unfactor(obj=train$y)
-
-test$Gender<-unfactor(obj=test$Gender)
-test$y<-unfactor(obj=test$y)
-
-
-## We create xgb train, test and CV sets.
-
-xgb_train <- xgb.DMatrix(
-  as.matrix(train[, colnames(train) != "y"]), 
-  label = (train$y))
-
-xgb_test<-xgb.DMatrix(
-  as.matrix(test[, colnames(test) != "y"]), 
-  label = (test$y))
-
-xgb_params <- list(
-  objective = "binary:logistic", 
-  eta = 0.1, 
-  max.depth = 8, 
-  nthread = 6, 
-  eval_metric = "auc"
-)
-
-##Default
-params <- list(booster = "gbtree", objective = "binary:logistic", eta=0.3, gamma=0, max_depth=6, min_child_weight=1, subsample=1, colsample_bytree=1)
-
-xgb_model <- xgb.train(
-  data = xgb_train, 
-  params = params, 
-  watchlist = list(test = xgb_test), 
-  nrounds = 5000, 
-  early_stopping_rounds = 40, 
-  print_every_n = 20
-)
-
-feature_imp_xgb <- xgb.importance(colnames(train), model = xgb_model)
-
-xgb.plot.importance(feature_imp_xgb, rel_to_first = TRUE, xlab = "Relative importance")
-
-# Make predictions based on this model
-
-predictions = predict(
-  xgb_model, 
-  newdata = as.matrix(test[, colnames(test) != "y"]), 
-  ntreelimit = 5000
-)
-
-
-
-y1<-ifelse(predictions>0.5,"1","0")
-y1<-as.factor(y1)
-
-
-test$y<-as.factor(test$y)
-
-confusionMatrix(y1,test$y)
-
-
-
-
-
-
-
-
-
+rm(Res_ADA,Res_CART,Res_GBM,Res_KNN,Res_Naive,Res_NN,Res_RF,Res_SVM,Res_XGB)
 
 
