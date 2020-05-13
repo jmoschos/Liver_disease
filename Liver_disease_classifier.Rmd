@@ -1,0 +1,474 @@
+---
+title: "Liver disease prediction"
+author: "Moschos Evangelos-Jason"
+abstract: "In this document, we are presenting our analysis on a liver disease classifier, based on the indian liver disease dataset found on Kaggle. The project is conducted for the Harvard Data science professional program."
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = NA)
+```
+
+```{r results='hide', echo=FALSE, include=TRUE, message=FALSE, warning=FALSE}
+
+# Install all needed libraries if not there
+
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
+if(!require(lubridate)) install.packages("lubridate", repos = "http://cran.us.r-project.org")
+if(!require(randomForest)) install.packages("randomForest", repos = "http://cran.us.r-project.org")
+if(!require(rpart)) install.packages("rpart", repos = "http://cran.us.r-project.org")
+if(!require(xgboost)) install.packages("xgboost", repos = "http://cran.us.r-project.org")
+if(!require(ggplot2)) install.packages("ggplot2", repos = "http://cran.us.r-project.org")
+if(!require(stringr)) install.packages("stringr", repos = "http://cran.us.r-project.org")
+if(!require(ggpubr)) install.packages("ggpubr", repos = "http://cran.us.r-project.org")
+if(!require(tinytex)) install.packages("tinytex", repos = "http://cran.us.r-project.org")
+if(!require(kableExtra)) install.packages("kableExtra", repos = "http://cran.us.r-project.org")
+if(!require(MLmetrics)) install.packages("MLmetrics", repos = "http://cran.us.r-project.org")
+if(!require(ROCR)) install.packages("ROCR", repos = "http://cran.us.r-project.org")
+if(!require(polycor)) install.packages("polycor", repos = "http://cran.us.r-project.org")
+if(!require(nnet)) install.packages("nnet", repos = "http://cran.us.r-project.org")
+if(!require(varhandle)) install.packages("varhandle", repos = "http://cran.us.r-project.org")
+if(!require(reshape2)) install.packages("reshape2", repos = "http://cran.us.r-project.org")
+if(!require(e1071)) install.packages("e1071", repos = "http://cran.us.r-project.org")
+if(!require(gbm)) install.packages("gbm", repos = "http://cran.us.r-project.org")
+if(!require(tinytex)) install.packages("tinytex", repos = "http://cran.us.r-project.org")
+
+```
+
+```{r results='hide', echo=FALSE, message=FALSE,include=TRUE, warning=FALSE}
+
+## Library loading
+
+library(tidyverse)
+library(caret)
+library(data.table)
+library(lubridate)
+library(randomForest)
+library(rpart)
+library(xgboost)
+library(ggplot2)
+library(stringr)
+library(ggpubr)
+library(tinytex)
+library(kableExtra)
+library(httr)
+library(RCurl)
+library(ROCR)
+library(polycor)
+library(nnet)
+library(varhandle)
+library(reshape2)
+library(e1071)
+library(gbm)
+library(tinytex)
+
+
+```
+
+
+
+\newpage
+
+# Executive summary {-}
+
+The preveance of liver diseases has increased tremendously the past few years, due to alcohol abuse, illegal substances, poisoned or contamined food etc. It is often characterized as a burden on both health sciences and economies and has a moderate mortality rate, amongst chronic diseases. 
+
+As part of the Harvard data science program, we will be attempting to create a classifier for detecting liver disease, based on a dataset for Indian patients. The dataset we are using is found at https://www.kaggle.com/uciml/indian-liver-patient-records. The aim of the project is to be able to predict (based on some characteristics) the existance of a liver disease in people. The characteristics include some general demographic characteristics and some blood-test results. Our dataset is slightly imbalanced, consisting of 72% liver patients and 28% healthy individuals.
+
+In our exploratory analysis, firstly we examined the 10 variables (Age, Gender, Total Bilirubin, Direct Billirubin, Alkaline Phospotase, Alamine Aminotransferase, Aspartate Aminotransfease, Total Proteins, Albumin and Albumin to Globulin ratio) seperately. Our results indicate that age and gender do not appear to have substantially different distributions on the prevalence of liver disease, although women were slightly less prone to it. This statement is also in line with the literature online, which states that liver disease occur throughout the world, irregardless of sex, region and age. 
+
+For the other 8 variables, due to lack of domain knowledge, we examined the distribution of each variable for both groups (healthy and sick) seperately, as well as the correlation between the variables. We identified that while extreme values in test results are highly correlated with the existence of the disease, it is hard to distinguish between a healthy and a sick individual for values within the normal range. As several variables were highly correlated with each other, we decided to remove the Direct Bilirubin, the Alamine aminotranferase and the Albumin and use all the remaining variables as features.
+
+Based on our EDA, we have developed nine models that consider these variables. The best performing model we developed was an Adaptive boosting algorithm that achieved an: 
+
+* **Accuracy of 77.6% in the test-set** 
+
+
+The analysis shows significant improvement over simpler methods (8-9% improvement), but several other factors can be incorporated to further improve the accuracy of the model.
+
+
+
+\newpage
+
+# Introduction
+
+As part of the Harvard data science professional program, we will attempt to create a classifier for detecting liver disease in individuals. In the next chapters, our analysis is structured as follows:
+
+* Chapter 2: Dataset loading/generation 
+
+* Chapter 3: Exploratory Data Analysis 
+
+* Chapter 4: Feature selection
+
+* Chapter 5: Analysis: Model building & Testing
+
+* Chapter 6: Conclusion 
+
+
+In chapter 2, the generation of the dataset is explained, and some basic dimensions of the data are explored.
+
+In chapter 3, an Exploratory data analysis is conducted, to identify interesting features in the dataset, and help us select the appropriate variables in our models.
+
+In chapter 4, the features of the models are selected base on the EDA.
+
+In chapter 5, the basic models are built, based on the characteristics identified in chapter 4. All the models are also evaluated.
+
+In chapter 6, an overview of the results is presented, limitations of the project are discussed, and direction for future research is provided.
+
+
+\newpage
+# Dataset generation/loading
+
+In this chapter, we will describe the dataset generation process, some useful (general) statistics for the dataset and some first insights we have.
+
+The entire dataset is found at https://www.kaggle.com/uciml/indian-liver-patient-records, but it is automatically downloaded in our code through https://github.com/jmoschos/Liver_disease/blob/master/indian_liver_patient.csv.
+
+```{r, include = FALSE, eval = TRUE}
+
+# Dataset loading
+
+##Automatic Data reading from my git repository jmoschos
+
+raw_data<-read.csv("https://raw.githubusercontent.com/jmoschos/Liver_disease/master/indian_liver_patient.csv")
+
+```
+
+## Dataset loading and basic manipulations
+
+We begin by examining the different variables:
+
+
+```{r, echo=FALSE, eval = TRUE}
+
+raw_data%>%
+  head(5)%>%
+  kable(align=rep('c', ncol(raw_data))) %>%
+   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                 position = "center",
+                 font_size = 8,
+                 full_width = FALSE,
+                 latex_options = "scale_down")
+```
+
+
+There are 11 variables:
+
+* Age: 
+* Gender: 
+* Total Bilirubin
+* Direct Bilirubin
+* Alkaline Phosphotase
+* Alamine Aminotransferase
+* Aspartate Aminotransferase
+* Total Proteins
+* Albumin
+* Albumin-to-Globulin ratio
+* Dataset: Target Variable
+
+Based on the data, we see that the majority of the variables are continuous with the exception of the target variable and the gender variable. A summary of the variable types is also illustrated in the following table:
+
+
+```{r, echo=FALSE, eval = TRUE}
+
+## Checking the class of the variables:
+
+str(raw_data)
+
+```
+
+
+Additionally, based on the documentation, we see that the target variable is 1 if the person is sick and 2 if he is healthy. We are going to change the convention to 1 if the person is sick and 0 if he is healthy. For the gender variable, we are also going to change it to a binary variable with 0 representing male and 1 female. Finally, we are going to convert these 2 variables into factors, as a preparation for our machine learning models.
+
+```{r, echo=FALSE, eval = TRUE}
+# Basic manipulations
+## Convert name of target variable to y and change its value to binary
+
+raw_data<-raw_data%>%
+  rename(y=Dataset)%>%
+  mutate(y=ifelse(y==2,0,y))  ## Changing target variable to 0,1 {0 = No disease, 1 = Liver disease}  
+                              ## In original file its encoded {1=disease, 2 = No disease}
+
+## Checking that the conversion is done corectly: We need 416 patients with liver disease (y=1) and 167 without (y=0)
+paste0("Number of healthy individuals:  ",sum(raw_data$y==0))
+paste0("Number of sick individuals:  ",sum(raw_data$y==1))
+
+## Making the y and gender variables into factors (for gender, we also change it to a binary variable)
+raw_data<-raw_data%>%
+  mutate(y=as.factor(y))%>%
+  mutate(Gender=ifelse(Gender=="Male","0","1"))%>%
+  mutate(Gender=as.factor(Gender))
+
+```
+
+We are also going to check for missing values in our dataset: 
+
+```{r, echo=FALSE, eval = TRUE}
+## Missing values ? 
+
+sapply(raw_data, function(x) sum(is.na(x)))%>%kable()       ## only albumin and globulin ratio has some NA's 
+```
+
+
+Based on the previous table, only one variable has (4) missing values. Due to the low number of missing values, we could consider removing these records, but in our implementation, we have chosen to replace these values with the average of all other values for that variable.
+
+```{r, echo=FALSE, eval = TRUE}
+## We will replace the NAs with the mean of the rest of the observations.If there were more outliers, a better choice might have been the median.
+
+raw_data$Albumin_and_Globulin_Ratio<-ifelse(is.na(raw_data$Albumin_and_Globulin_Ratio), mean(raw_data$Albumin_and_Globulin_Ratio,na.rm=TRUE),raw_data$Albumin_and_Globulin_Ratio)     ## if the value is NA, replace it with the mean of the rest of the values                                                       ## (NAs excluded with na.rm argument, otherwise keep it as is)
+```
+
+
+## Dataset generation 
+
+For model building purposes, we are going to split the initial dataset into a train set and a test set. We have decided to use a 80/20 split rule for these sets. For the sake of reproducability, we have added a seed to both the set generation and all subsequent algorithms, where randomness plays a role.
+
+```{r, echo=FALSE, eval = TRUE}
+
+## Data splitting: 80% for train and 20% for test
+
+##Seed for reproducability
+set.seed(1)
+
+## Making an index for the train set.
+train_index<-createDataPartition(raw_data$y, p = 0.8, times = 1, list= FALSE)
+
+## Creating the subsets for train and test
+train<-raw_data[train_index,]
+test<-raw_data[-train_index,]
+
+## Removing the index. No longer required.
+rm(train_index)
+```
+
+
+\newpage
+
+# Exploratory Data analysis
+
+In this section, we are presenting our exploratory data analysis (EDA). From the variables in our dataset, described in the previous section, we will examine all of them seperately and then calculate the correlation between them.
+
+## Target Variable: y
+
+We will start by examining the distribution of healthy vs. sick individuals in our dataset.
+
+
+```{r, echo=FALSE, eval = TRUE,out = '130%'}
+raw_data%>%
+  ggplot(aes(y))+
+  geom_bar()+
+  labs(title = "Liver disease prevalence",
+       x = "Disease",
+       y= "Number of people")+
+  scale_x_discrete(labels = c("No disease", "Liver disease"))
+```
+
+It appears that our dataset is imbalanced with only 28% healthy individuals and 72% sick. 
+
+\newpage
+
+## Gender analysis
+
+Literature suggests that the disease appears in both genders . To examine this statement, we are going to plot the number of instances of healthy vs. unhealthy individuals for two genders.
+
+```{r, echo=FALSE, eval = TRUE,out.width = '80%'}
+## Does gender affect the disease?
+
+raw_data%>%
+  group_by(Gender,y)%>%
+  ggplot(aes(x=Gender,fill=y))+
+  geom_bar()+
+  labs( title = "Prevalence of disease based on gender",
+        x = "Gender",
+        y = "Number of instances")+
+  scale_fill_discrete(name = "Category", labels = c("No disease", "Liver disease"))+
+  scale_x_discrete(labels = c("Male","Female"))
+
+## Its hard to compare between the two categories, but females represent a lower percentage in our dataset.
+```
+
+Based on the the plot, we can see that the dataset contains mostly male data, but its hard to compare the prevalence of the disease between the  two genders. Therefore, we are going to scale our data to be able to do the comparison.
+
+```{r, echo=FALSE, eval = TRUE,out.width = '80%'}
+## Lets look at percentage data instead, for comparison between the two groups.
+
+
+raw_data%>%
+  group_by(Gender,y)%>%
+  ggplot(aes(x=Gender,fill=y))+
+  geom_bar(position="fill")+
+  labs( title = "Scaled Prevalence of disease based on gender",
+        x = "Gender",
+        y = "Percentage of instances")+
+  scale_fill_discrete(name = "Category", labels = c("No disease", "Liver disease"))+
+  scale_x_discrete(labels = c("Male","Female"))
+
+
+## It appears that females (while being under-represented, have a slightly lower disease to no-disease ratio)
+```
+
+The graph indicates that both genders behave similarly, although females have a slightly lower rate of disease. 
+
+## Age analysis
+
+Continuing our EDA, we are going to explore the age distribution across our dataset:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE,out.width = '80%'}
+## Lets now examine the age distribution in our dataset.
+
+raw_data%>%
+  ggplot(aes(Age))+
+  geom_histogram(col="blue", fill = "yellow")+
+  labs( title = "Age Distribution",
+        x = "Age",
+        y = "Number of people")
+
+## Age is a rather wide distribution (0-90 year old) with more observations centered around the mean
+```
+
+The graph shows a wide distribution, across nearly all ages that is centered around the middle. We are now going to plot the histogram of ages but also indicate the target variable y.
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE,out.width = '90%'}
+## Lets check how the age distribution differs for patients and non-patients
+
+raw_data%>%
+  ggplot(aes(x=Age, fill = y))+
+  geom_histogram(col="black")+
+  labs( title = "Age Distribution vs. Disease",
+        x = "Age",
+        y = "Number of people")+
+  scale_fill_discrete(name = "Category", labels = c("No disease", "Liver disease"))
+
+## We observe a similar distribution based on age.  
+```
+
+It appears that both healthy and sick individuals follow similar age distribution. 
+
+## Blood test results
+
+Due to lack of domain knowledge, exploring the remaining 8 variables is not a straightforward process. We are going to start by plotting scatter plots of the individual variables, but also add jitter in our plots, in order for the individual dots to be seperated.
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+## Scatter plots with jitter:
+
+##Function that based on an index i produces the required plot
+plotVar<-function(i){
+  
+  ggplot(aes(x=raw_data[,i],y=y),data=raw_data)+
+    geom_point(position="jitter",  col = "blue")+
+    labs( x = names(raw_data[i]))
+}
+
+## i from 3 (excl. gender and age) to max column - 1 (exluding the target variable)
+i<-3:(ncol(raw_data)-1)
+
+## Creating the plots and saving them to plots
+plots<-map(i,plotVar)
+
+## arranging them in a grid
+ggarrange(plotlist=plots,ncol=2, nrow=4)
+
+## removing plots
+rm(plots)
+```
+
+
+From these 8 plots, we can see the following:
+
+* **Total Bilirubin and Direct Bilirubin have similar behaviour**: For healthy invididuals, both metrics have small values, and for sick individuals we have a wide range of values (including the range of healthy people).
+
+* **Alkaline phosphotase has a similar behaviour to the Bilirubins but to a smaller extent**: While for the bilirubins we can see up to 20 times higher values, in Phospotase we see up to 4 times higher values in liver patients. 
+
+* **Total Proteins, Albumin and Albumin-to-Globulin ratio have similar graphs**, where both healthy and sick people are centered around a value but the range for sick people is (slightly) larger.
+
+* **The two aminotransferases also have the same behaviour as the bilirubins and the alkaline** but with fewer outliers.
+
+
+To continue the exploration we are going to plot the histograms for the same variables:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+##Histograms: We exclude the Gender variable that is categorical (factor)
+
+plotHist<-function(i){
+  
+  ggplot(aes(x=raw_data[,i],fill=y),data=raw_data)+
+    geom_histogram(col="yellow")+
+    labs( x = names(raw_data[i]),
+          y = "Count")+
+    scale_fill_discrete(name = "Category", labels = c("No disease", "Liver disease"))
+}
+
+
+## index from 1 to max column -1 EXCLUDING gender variable (i==2)
+i<-c(3:(ncol(raw_data)-1))
+
+## Creating the plots
+plots<-map(i,plotHist)
+
+##Arranging the plots
+ggarrange(plotlist=plots,ncol=2, nrow=4)
+
+##removing the plots and index variable
+rm(plots,i)
+```
+
+From the histograms, we observe that:
+
+* Albumin, Albumin-to-globulin ratio and Total proteins follow similar distributions.
+* The other 5 variables have very similar distributions. Alkaline Phosphotase is slightly different than the rest, as it has very few observations at 0.
+* In all the variables, it seems like having a liver disease has a bigger range of values, compared to not having the disease and the range of values for sick individuals includes the range of values for healthy individuals.
+* There are patients with "normal" indicators that have the disease.
+
+
+\newpage
+## Correlation between variables
+
+Based on the histograms and scatterplots, it appears that some of the variables have similar characteristics. To verify that, we are going to calculate the correlation matrix for all continuous variables (and exclude the gender).
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+## Lets check the correlation between all the continuous variables
+
+## Picking only the continuous variables
+corvar<-raw_data[,c(1,3:10)]
+
+##Creating the correlation matrix
+cormatrix<-cor(corvar)
+
+## we are going to use only the upper part of the matrix and leave the rest blank
+cormatrix[upper.tri(cormatrix)]<-NA
+
+## Using reshape library, we are "melting" the matrix into a useable form for a heatmap
+cormatrix<-melt(cormatrix,na.rm = TRUE)
+
+## Plotting the heatmap of correlation
+cormatrix%>%
+  ggplot(aes(x=Var1,y=Var2,fill=value))+
+  geom_tile(color="white")+
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Pearson\nCorrelation") +
+  theme_minimal()+ 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+                                   size = 12, hjust = 1))+
+  coord_fixed()
+
+rm(cormatrix,corvar)
+```
+
+Similar to our observations:
+
+* Albumin is highly correlated with both Albumin-to-globulin ration and Total proteins.
+* Direct Bilirubin is highly correlated with Total Bilirubin.
+* Alamine aminotransferace is highly correlated with Aspartate aminotransferace.
+
+\newpage
+# Feature selection 
+
+
