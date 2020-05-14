@@ -471,4 +471,360 @@ Similar to our observations:
 \newpage
 # Feature selection 
 
+Based on our EDA, we are now going to select the features that will be used in our models. In the correlation matrix, we observed that some variables are highly correlated with each other. We are going to remove some of the variables that convey the same type of information.
 
+Firstly, we are going to look at Bilirubin (Total vs. Direct). 
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+## Some variables are highly correlated with each other. We are going to select the variables with the minimum variability and remove them from our sets for the model training.
+
+## Examining Total vs. Direct Bilirubin
+
+p1<-train%>%
+  ggplot(aes(x="",y=train[,3]))+
+  geom_boxplot()+
+  geom_point(position="jitter")+
+  labs(title="Total Bilirubin")+
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank())+
+  ylim(0,80)
+
+p2<-train%>%
+  ggplot(aes(x="",y=train[,4]))+
+  geom_boxplot()+
+  geom_point(position="jitter")+
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank())+
+  ylim(0,80)+
+  labs(title="Direct Bilirubin")
+
+## Arranging in 1 plot
+ggarrange(p1,p2,ncol=2,nrow=1)
+
+## Removing subplots
+rm(p1,p2)
+
+## Total bilirubin has a higher variation, so we will keep this
+```
+
+Based on this graph, Total Bilirubin has a higher variation, and thus we are going to remove Direct Bilirubin from our dataset.On a sidenote, Total Bilirubin is the sum of Direct and indirect bilirubin, which is why there is such a high correlation between the two.
+
+We are now going to check Alamine aminotransferase and Aspartate aminotransferase:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+## Examining Alamine aminotransferase vs. Aspartate aminostransferase
+
+p1<-train%>%
+  ggplot(aes(x="",y=train[,6]))+
+  geom_boxplot()+
+  geom_point(position="jitter")+
+  labs(title="Alamine aminotransferase ")+
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank())+
+ylim(0,5000)
+
+p2<-train%>%
+  ggplot(aes(x="",y=train[,7]))+
+  geom_boxplot()+
+  geom_point(position="jitter")+
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank())+
+  ylim(0,5000)+
+  labs(title=" Aspartate aminostransferase")
+
+## arranging in 1 plot for comparison
+ggarrange(p1,p2,ncol=2,nrow=1)
+
+## Removing plots
+rm(p1,p2)
+
+## Aspartate has a higher variation, so we will remove alamine
+```
+
+Similarly to the bilirubins, we observe that Aspartate has a much higher variation, and therefore we are going to remove Alamine.
+
+Finally, for albumin, since its highly correlated with both Albumin to Globulin ratio and Total proteins, we are going to remove it, to solve both problems at once.
+
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+## Our final feature selection includes: Age, Gender, Total Bilirubin, Alkaline Phosphotase, Aspartate Aminostransferase, Total Proteins and Albumin/Globulin Ratio
+
+train<-train[,c(1,2,3,5,7,8,10,11)]
+test<-test[,c(1,2,3,5,7,8,10,11)]
+```
+
+Based on our feature engineering, the final features for our models are:
+
+* Age
+* Gender
+* Total Bilirubin
+* Alkaline Phosphotase
+* Aspartate Aminotransferase
+* Total Proteins
+* Albumin to Blobulin ratio
+
+\newpage
+# Analysis: Model building and testing
+
+In this section, we are presenting the different models developed and their performance. We are also discussing the metric used for evaluation and the validation method for tuning.
+
+## Metric for performance
+
+Typically, in medical applications false negatives are far more important than false positives and therefore, metrics such as F1 score are utilized. In our implementation, we are going to train our models with the **F1 score** as the metric, but also track the overall **accuracy**. 
+
+Due to the fact that our dataset is imbalanced with the sick individuals being more than 70%, it is likely that some models might classify all people as sick and therefore the F1 score cannot be calculated.
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+## Metric = Accuracy
+metric="F1"
+
+```
+
+## Validation method and tuning
+
+For tuning our algorithms, we have selected **10-fold cross-validation** for all methods. The final reported performance (accuracy, F1) is based on the test set, after selecting the optimal parameters (from cross validation on the train set).
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+## Control = 10-fold cross validation
+control<-trainControl(method="cv",number=10)
+
+```
+
+## Model 1: Naive model
+
+For the first model, which we will use as benchmark, we are going to implement a naive-approach: classify every patient as having the disease. Since our dataset is imbalanced (favoring disease), our accuracy will be high (the f1 score is not defined in this case).
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE, include = FALSE}
+
+## Naive model - Always liver disease
+
+y_hat_naive<-rep.int(1,times=nrow(test))
+y_hat_naive<-factor(y_hat_naive, levels=c("0","1"))
+confusionMatrix(y_hat_naive,test$y)$overall["Accuracy"]
+
+Res_Naive<-data.frame(method="Naive",Accuracy=confusionMatrix(y_hat_naive,test$y)$overall["Accuracy"])
+
+F_Naive<-data.frame(method="Naive",F1=F_meas(y_hat_naive,test$y))
+
+```
+
+The accuracy of this method is:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_hat_naive,test$y)$overall["Accuracy"]
+
+```
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+Results<-inner_join(Res_Naive,F_Naive, by = "method")
+
+Results %>%
+  kable()
+
+```
+
+## Model 2: Classification tree
+
+In the second model, we are implementing a classification tree and we are experimenting on the complexity parameter (values between 0 and 1 with 0.001 step).
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE, include = FALSE}
+set.seed(1)
+grid<-expand.grid(cp=seq(0,1,0.001))     ##tuning for complexity parameter
+fittree<-train(y~.,
+               data=train,
+               method="rpart",
+               trControl=control,
+               metric=metric,
+               tuneGrid=grid)
+
+y_hat_tree<-predict(fittree,test)
+confusionMatrix(y_hat_tree,test$y)$overall["Accuracy"]
+
+
+Res_CART<-data.frame(method="Classification tree",Accuracy=confusionMatrix(y_hat_tree,test$y)$overall["Accuracy"])
+
+F_CART<-data.frame(method="Classification tree",F1=F_meas(y_hat_tree,test$y))
+```
+
+The accuracy of this model is:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_hat_tree,test$y)$overall["Accuracy"]
+
+```
+
+The F1 score is: 
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+ifelse(is.na(F_meas(y_hat_tree,test$y)),paste0("Not defined"), paste0(F_meas(y_hat_tree,test$y)))
+
+```
+
+The classification tree appears to produce the same results, as our naive method and is therefore not an improvement.
+
+The results so far:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+Results1<-inner_join(Res_CART,F_CART, by = "method")
+Results<-rbind(Results,Results1)
+rm(Results1)
+
+Results %>%
+  kable()
+
+```
+
+## Model 3: Neural network
+
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE, include = FALSE}
+## Neural network
+
+set.seed(1)
+fitnn<-train(y~.,
+             data=train,
+             method="nnet",
+             trControl=control,
+             metric=metric)
+y_hat_nn<-predict(fitnn,test)
+confusionMatrix(y_hat_nn,test$y)$overall["Accuracy"]
+
+Res_NN<-data.frame(method="Neural network",Accuracy=confusionMatrix(y_hat_nn,test$y)$overall["Accuracy"])
+
+F_NN<-data.frame(method="Neural network",F1=F_meas(y_hat_nn,test$y))
+
+```
+
+
+
+The accuracy of this model is:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_hat_nn,test$y)$overall["Accuracy"]
+
+```
+
+The F1 score is: 
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+ifelse(is.na(F_meas(y_hat_nn,test$y)),paste0("Not defined"), paste0(F_meas(y_hat_nn,test$y)))
+
+```
+
+The Neural network, similar to the CART produces the same results, as our naive method and is therefore not an improvement.
+
+The results so far:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+Results1<-inner_join(Res_NN,F_NN, by = "method")
+Results<-rbind(Results,Results1)
+rm(Results1)
+
+Results %>%
+  kable()
+
+```
+
+## Model 4: Adaptive boosting (adaboost)
+
+```{r, echo=FALSE, eval = FALSE, warning=FALSE, message=FALSE, include = FALSE}
+
+set.seed(1)
+grid<-expand.grid(nIter=seq(50,250,50),method="adaboost")     ##Tuning for number of trees
+fitada<-train(y~.,
+              data=train,
+              method="adaboost",
+              trControl=control,
+              tuneGrid=grid,
+              metric=metric)
+
+y_hat_ada<-predict(fitada,test)
+confusionMatrix(y_hat_ada,test$y)$overall["Accuracy"]
+
+Res_ADA<-data.frame(method="Ada boost",Accuracy=confusionMatrix(y_hat_ada,test$y)$overall["Accuracy"])
+
+F_ADA<-data.frame(method="Ada boost",F1=F_meas(y_hat_ada,test$y))
+
+```
+
+The accuracy of this model is:
+
+```{r, echo=FALSE, eval = FALSE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_hat_ada,test$y)$overall["Accuracy"]
+
+```
+
+The F1 score is: 
+
+```{r, echo=FALSE, eval = FALSE, warning=FALSE, message=FALSE}
+
+ifelse(is.na(F_meas(y_hat_ada,test$y)),paste0("Not defined"), paste0(F_meas(y_hat_ada,test$y)))
+
+```
+
+The adaboost algorithm has an impressive improvement in accuracy, but has also missclassified 2 patients. 
+
+The results so far:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+Results1<-inner_join(Res_ADA,F_ADA, by = "method")
+Results<-rbind(Results,Results1)
+rm(Results1)
+
+Results %>%
+  kable()
+
+```
+
+
+## Model 5: Gradient boosting
+
+```{r, echo=FALSE, eval = FALSE, warning=FALSE, message=FALSE, include = FALSE}
+
+
+
+```
+
+
+The accuracy of this model is:
+
+```{r, echo=FALSE, eval = FALSE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_hat_ada,test$y)$overall["Accuracy"]
+
+```
+
+The F1 score is: 
+
+```{r, echo=FALSE, eval = FALSE, warning=FALSE, message=FALSE}
+
+ifelse(is.na(F_meas(y_hat_ada,test$y)),paste0("Not defined"), paste0(F_meas(y_hat_ada,test$y)))
+
+```
+
+The adaboost algorithm has an impressive improvement in accuracy, but has also missclassified 2 patients. 
+
+The results so far:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+Results1<-inner_join(Res_ADA,F_ADA, by = "method")
+Results<-rbind(Results,Results1)
+rm(Results1)
+
+Results %>%
+  kable()
+
+```
