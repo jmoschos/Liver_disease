@@ -348,17 +348,20 @@ test<-test[,c(1,2,3,5,7,8,10,11)]
 control<-trainControl(method="cv",number=10)
 
 ## Metric = Accuracy
-metric="Accuracy"
+metric="F1"
 
 
 ## Naive model - Always liver disease
 
 y_hat_naive<-rep.int(1,times=nrow(test))
-y_hat_naive<-as.factor(y_hat_naive)
+y_hat_naive<-factor(y_hat_naive, levels=c("0","1"))
 confusionMatrix(y_hat_naive,test$y)$overall["Accuracy"]
 
-Res_Naive<-data.frame(method="Naive",results=confusionMatrix(y_hat_naive,test$y)$overall["Accuracy"])
+Res_Naive<-data.frame(method="Naive",Accuracy=confusionMatrix(y_hat_naive,test$y)$overall["Accuracy"])
 
+F_Naive<-data.frame(method="Naive",F1=F_meas(y_hat_naive,test$y))
+
+Results_Naive<-inner_join(Res_Naive,F_Naive, by = "method")
 
 ## Classification tree
 
@@ -374,9 +377,12 @@ fittree<-train(y~.,
 y_hat_tree<-predict(fittree,test)
 confusionMatrix(y_hat_tree,test$y)$overall["Accuracy"]
 
-Res_CART<-data.frame(method="Classification tree",results=confusionMatrix(y_hat_tree,test$y)$overall["Accuracy"])
 
+Res_CART<-data.frame(method="Classification tree",Accuracy=confusionMatrix(y_hat_tree,test$y)$overall["Accuracy"])
 
+F_CART<-data.frame(method="Classification tree",F1=F_meas(y_hat_tree,test$y))
+
+Results_CART<-inner_join(Res_CART,F_CART, by = "method")
 
 ## Neural network
 
@@ -389,9 +395,11 @@ fitnn<-train(y~.,
 y_hat_nn<-predict(fitnn,test)
 confusionMatrix(y_hat_nn,test$y)$overall["Accuracy"]
 
-Res_NN<-data.frame(method="Neural network",results=confusionMatrix(y_hat_nn,test$y)$overall["Accuracy"])
+Res_NN<-data.frame(method="Neural network",Accuracy=confusionMatrix(y_hat_nn,test$y)$overall["Accuracy"])
 
+F_NN<-data.frame(method="Neural network",F1=F_meas(y_hat_nn,test$y))
 
+Results_NN<-inner_join(Res_NN,F_NN, by = "method")
 
 ## Adaboost
 
@@ -407,8 +415,11 @@ fitada<-train(y~.,
 y_hat_ada<-predict(fitada,test)
 confusionMatrix(y_hat_ada,test$y)$overall["Accuracy"]
 
-Res_ADA<-data.frame(method="Ada boost",results=confusionMatrix(y_hat_ada,test$y)$overall["Accuracy"])
+Res_ADA<-data.frame(method="Ada boost",Accuracy=confusionMatrix(y_hat_ada,test$y)$overall["Accuracy"])
 
+F_ADA<-data.frame(method="Ada boost",F1=F_meas(y_hat_ada,test$y))
+
+Results_ADA<-inner_join(Res_ADA,F_ADA, by = "method")
 
 ##GBM
 
@@ -428,7 +439,11 @@ gbmFit1 <- train(y ~ ., data = train,
 y_gbm<-predict(gbmFit1,test)
 confusionMatrix(y_gbm,test$y)$overall["Accuracy"]
 
-Res_GBM<-data.frame(method="GBM",results=confusionMatrix(y_gbm,test$y)$overall["Accuracy"])
+Res_GBM<-data.frame(method="GBM",Accuracy=confusionMatrix(y_gbm,test$y)$overall["Accuracy"])
+
+F_GBM<-data.frame(method="GBM",F1=F_meas(y_gbm,test$y))
+
+Results_GBM<-inner_join(Res_GBM,F_GBM, by = "method")
 
 ## Support vector machine
 
@@ -441,8 +456,11 @@ fitsvm<-train(y~.,
 y_hat_svm<-predict(fitsvm,test)
 confusionMatrix(y_hat_svm,test$y)$overall["Accuracy"]
 
-Res_SVM<-data.frame(method="SVM",results=confusionMatrix(y_hat_svm,test$y)$overall["Accuracy"])
+Res_SVM<-data.frame(method="SVM",Accuracy=confusionMatrix(y_hat_svm,test$y)$overall["Accuracy"])
 
+F_SVM<-data.frame(method="SVM",F1=F_meas(y_hat_svm,test$y))
+
+Results_SVM<-inner_join(Res_SVM,F_SVM, by = "method")
 
 ## K-nearest neighbors
 
@@ -457,7 +475,11 @@ fitknn<-train(y~.,
 y_hat_knn<-predict(fitknn,test)
 confusionMatrix(y_hat_knn,test$y)$overall["Accuracy"]
 
-Res_KNN<-data.frame(method="KNN",results=confusionMatrix(y_hat_knn,test$y)$overall["Accuracy"])
+Res_KNN<-data.frame(method="KNN",Accuracy=confusionMatrix(y_hat_knn,test$y)$overall["Accuracy"])
+
+F_KNN<-data.frame(method="KNN",F1=F_meas(y_hat_knn,test$y))
+
+Results_KNN<-inner_join(Res_KNN,F_KNN, by = "method")
 
 ## Random forest model
 
@@ -472,8 +494,11 @@ fitrf<-train(y~.,
 y_hat_rf<-predict(fitrf,test)
 confusionMatrix(y_hat_rf,test$y)$overall["Accuracy"]
 
-Res_RF<-data.frame(method="Random forest",results=confusionMatrix(y_hat_rf,test$y)$overall["Accuracy"])
+Res_RF<-data.frame(method="Random forest",Accuracy=confusionMatrix(y_hat_rf,test$y)$overall["Accuracy"])
 
+F_RF<-data.frame(method="Random forest",F1=F_meas(y_hat_rf,test$y))
+
+Results_RF<-inner_join(Res_RF,F_RF, by = "method")
 
 ## XG BOOST
 
@@ -496,16 +521,18 @@ fitxgb <- train(y ~ .,
 y_xgb<-predict(fitxgb,test)
 confusionMatrix(y_xgb,test$y)$overall["Accuracy"]
 
-Res_XGB<-data.frame(method="XGBoost",results=confusionMatrix(y_xgb,test$y)$overall["Accuracy"])
+Res_XGB<-data.frame(method="XGBoost",Accuracy=confusionMatrix(y_xgb,test$y)$overall["Accuracy"])
 
+F_XGB<-data.frame(method="XGBoost",F1=F_meas(y_xgb,test$y))
 
+Results_XGB<-inner_join(Res_XGB,F_XGB, by = "method")
 
 ##combining all results
 
-Results<-rbind(Res_ADA,Res_CART,Res_GBM,Res_KNN,Res_Naive,Res_NN,Res_RF,Res_SVM,Res_XGB)
+Results<-rbind(Results_ADA,Results_CART,Results_GBM,Results_KNN,Results_Naive,Results_NN,Results_RF,Results_SVM,Results_XGB)
 
 ## removing individual dataframes
 
 rm(Res_ADA,Res_CART,Res_GBM,Res_KNN,Res_Naive,Res_NN,Res_RF,Res_SVM,Res_XGB)
-
+rm(F_ADA,F_CART,F_GBM,F_KNN,F_Naive,F_NN,F_RF,F_SVM,F_XGB)
 
