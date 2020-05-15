@@ -39,6 +39,9 @@ if(!require(reshape2)) install.packages("reshape2", repos = "http://cran.us.r-pr
 if(!require(e1071)) install.packages("e1071", repos = "http://cran.us.r-project.org")
 if(!require(gbm)) install.packages("gbm", repos = "http://cran.us.r-project.org")
 if(!require(tinytex)) install.packages("tinytex", repos = "http://cran.us.r-project.org")
+if(!require(doSNOW)) install.packages("doSNOW", repos = "http://cran.us.r-project.org")
+if(!require(fastAdaboost)) install.packages("fastAdaboost", repos = "http://cran.us.r-project.org")
+if(!require(kernlab)) install.packages("kernlab", repos = "http://cran.us.r-project.org")
 
 ```
 
@@ -68,30 +71,33 @@ library(reshape2)
 library(e1071)
 library(gbm)
 library(tinytex)
+library(doSNOW)
 
 
 ```
-
 
 
 \newpage
 
 # Executive summary {-}
 
-The preveance of liver diseases has increased tremendously the past few years, due to alcohol abuse, illegal substances, poisoned or contamined food etc. It is often characterized as a burden on both health sciences and economies and has a moderate mortality rate, amongst chronic diseases. 
+The prevalence of liver diseases has increased tremendously the past few years, due to alcohol abuse, illegal substances, poisoned or contamined food etc. It is often characterized as a burden on both health sciences and economies and has a moderate mortality rate, amongst chronic diseases. 
 
-As part of the Harvard data science program, we will be attempting to create a classifier for detecting liver disease, based on a dataset for Indian patients. The dataset we are using is found at https://www.kaggle.com/uciml/indian-liver-patient-records. The aim of the project is to be able to predict (based on some characteristics) the existance of a liver disease in people. The characteristics include some general demographic characteristics and some blood-test results. Our dataset is slightly imbalanced, consisting of 72% liver patients and 28% healthy individuals.
+As part of the Harvard data science program, we will be attempting to create a classifier for detecting liver disease, based on a dataset for Indian patients. The dataset we are using is found at https://www.kaggle.com/uciml/indian-liver-patient-records. The aim of the project is to be able to predict (based on some characteristics) the existance of a liver disease in people. These characteristics include some general demographic characteristics and some blood-test results. Our dataset is slightly imbalanced, consisting of 72% liver patients and 28% healthy individuals.
 
-In our exploratory analysis, firstly we examined the 10 variables (Age, Gender, Total Bilirubin, Direct Billirubin, Alkaline Phospotase, Alamine Aminotransferase, Aspartate Aminotransfease, Total Proteins, Albumin and Albumin to Globulin ratio) seperately. Our results indicate that age and gender do not appear to have substantially different distributions on the prevalence of liver disease, although women were slightly less prone to it. This statement is also in line with the literature online, which states that liver disease occur throughout the world, irregardless of sex, region and age. 
+In our exploratory analysis, we firstly examined the 10 variables (Age, Gender, Total Bilirubin, Direct Billirubin, Alkaline Phospotase, Alamine Aminotransferase, Aspartate Aminotransfease, Total Proteins, Albumin and Albumin to Globulin ratio) seperately. Our results indicate that age and gender do not appear to have substantially different distributions on the prevalence of liver disease, although women were slightly less prone to it. This statement is also in-line with the literature online, which states that liver disease occur throughout the world, irregardless of sex, region and age. 
 
-For the other 8 variables, due to lack of domain knowledge, we examined the distribution of each variable for both groups (healthy and sick) seperately, as well as the correlation between the variables. We identified that while extreme values in test results are highly correlated with the existence of the disease, it is hard to distinguish between a healthy and a sick individual for values within the normal range. As several variables were highly correlated with each other, we decided to remove the Direct Bilirubin, the Alamine aminotranferase and the Albumin and use all the remaining variables as features.
+For the other 8 variables, due to lack of domain knowledge, we examined the distribution of each variable for both groups (healthy and sick) seperately, as well as the correlation between the variables. We identified that while extreme values in test results are correlated with the existence of the disease, it is hard to distinguish between a healthy and a sick individual for values within the normal range. As several variables were highly correlated with each other, we decided to remove the Direct Bilirubin, the Alamine aminotranferase and the Albumin and use all the remaining variables as features.
 
-Based on our EDA, we have developed nine models that consider these variables. The best performing model we developed was an Adaptive boosting algorithm that achieved an: 
+Additionally, we created a new variable, indicating the total number of extreme values (i.e. blood test results outside the normal range, defined solely on the train set). Finally, we also decided to preprocess our dataset by scaling and centering all the variables.
 
-* **Accuracy of 77.6% in the test-set** 
+Based on our EDA, we have developed nine models that consider these variables. The best performing model we developed was a Random forest algorithm that achieved an: 
 
+* **Accuracy of 81.03% in the test-set** 
 
-The analysis shows significant improvement over simpler methods (8-9% improvement), but several other factors can be incorporated to further improve the accuracy of the model.
+To evaluate the feature engineering, we have re-trained a random forest model (10th model), on the unprocessed dataset; the accuracy of the second Random forest algorithm was **75.86%**, and thus the features selected were beneficial to the overall modelling process. 
+
+The analysis shows significant improvement over simpler methods (13% improvement), but several other factors can be incorporated to further improve the accuracy of the model.
 
 
 
@@ -116,7 +122,7 @@ In chapter 2, the generation of the dataset is explained, and some basic dimensi
 
 In chapter 3, an Exploratory data analysis is conducted, to identify interesting features in the dataset, and help us select the appropriate variables in our models.
 
-In chapter 4, the features of the models are selected base on the EDA.
+In chapter 4, the features of the models are selected based on the EDA. Some pre-processing is also performed.
 
 In chapter 5, the basic models are built, based on the characteristics identified in chapter 4. All the models are also evaluated.
 
@@ -172,7 +178,7 @@ There are 11 variables:
 * Albumin-to-Globulin ratio
 * Dataset: Target Variable
 
-Based on the data, we see that the majority of the variables are continuous with the exception of the target variable and the gender variable. A summary of the variable types is also illustrated in the following table:
+Based on the data, we see that the majority of the variables are continuous with the exception of the target variable and the gender variable. A summary of the variable types is also illustrated in the following figure:
 
 
 ```{r, echo=FALSE, eval = TRUE}
@@ -471,7 +477,24 @@ Similar to our observations:
 \newpage
 # Feature selection 
 
-Based on our EDA, we are now going to select the features that will be used in our models. In the correlation matrix, we observed that some variables are highly correlated with each other. We are going to remove some of the variables that convey the same type of information.
+Based on our EDA, we are now going to select the features that will be used in our models.
+
+To Test the effectiveness of the steps performed in this section, we are going to save the original train and test datasets and re-train the best performing model on those. Our comparison will be between:
+
+* The best performing model with the feature-engineered dataset [case 1]
+* The same model as case 1, but with the original (no changes made) dataset [case 2]
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+## Before doing any manipulation to the original dataset, we are going to save them. We will utilize them for benchmarking later in the process.
+trainS<-train
+testS<-test
+
+```
+
+## Variable removal
+
+In the correlation matrix, we observed that some variables are highly correlated with each other. We are going to remove some of the variables that convey the same type of information.
 
 Firstly, we are going to look at Bilirubin (Total vs. Direct). 
 
@@ -507,7 +530,7 @@ rm(p1,p2)
 ## Total bilirubin has a higher variation, so we will keep this
 ```
 
-Based on this graph, Total Bilirubin has a higher variation, and thus we are going to remove Direct Bilirubin from our dataset.On a sidenote, Total Bilirubin is the sum of Direct and indirect bilirubin, which is why there is such a high correlation between the two.
+Based on this graph, Total Bilirubin has a higher variation, and thus we are going to remove Direct Bilirubin from our dataset.On a sidenote, Total Bilirubin is the sum of Direct and Indirect bilirubin, which is why there is such a high correlation between the two.
 
 We are now going to check Alamine aminotransferase and Aspartate aminotransferase:
 
@@ -545,12 +568,127 @@ Similarly to the bilirubins, we observe that Aspartate has a much higher variati
 
 Finally, for albumin, since its highly correlated with both Albumin to Globulin ratio and Total proteins, we are going to remove it, to solve both problems at once.
 
+## New variable creation: Number of extremes
+
+Besides the existing variables in our dataset, we believe it might be of interest to add a new variable: Number of extreme blood test result values. The motivation behind this choice is that most healthy patients will not have any extreme values in their blood test results, while sick individuals will have at least some indication of a liver disease.
+
+To create this variable we will perform the following steps: 
+
+* First calculate the normal range of values on the **train set only** for the **healthy individuals**. In a real scenario we would not have the test set output (sick or healthy), and therefore we cannot base our analysis on that set. 
+* Create a dummy variable for each blood test result (8 variables)
+* Fill the dummy variable with 1 if the blood test result of that individual is outside the limits calculated (below lower limit, or above upper limit).
+* Sum the rows
+
+The final vector contains for each individual the total number of blood test result values that is outside the "normal range" (which again is calculated **ONLY on the train set**). Our hyptothesis is that people with a large number of extreme values are sick, while people with lower number (or even 0) are more likely to be healthy.
+
 
 ```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
-## Our final feature selection includes: Age, Gender, Total Bilirubin, Alkaline Phosphotase, Aspartate Aminostransferase, Total Proteins and Albumin/Globulin Ratio
+## Adding a new variable: Number of extremes for blood test results
 
-train<-train[,c(1,2,3,5,7,8,10,11)]
-test<-test[,c(1,2,3,5,7,8,10,11)]
+## it seems that most sick patients have values that are much more extreme than that of healthy patients. It might be interesting to explore for the sick patients, how many values of the continuous variables are outside the normal range (normal range is defined as the range observed in healthy patients.)
+
+##dummy variable = number of "normal values for other variables". If a patient has a value within the range of a normal patient y=0. In the end we sum the values of these 8 dummy variables for the total number of out-of-bounds variables.
+
+## Find the min and max for healthy patients     ## the range is calculated ONLY ON THE TRAIN DATA. We do not use the unseen data for our calculations
+
+min<-apply(train[train$y==0,],2,min)
+max<-apply(train[train$y==0,],2,max)
+
+## Make these limits into 1 dataframe
+lims<-data.frame(min=min,max=max)
+
+##removing min and max
+rm(min,max)
+
+##Removing age,gender and target variable   --> We only care for the blood results
+lims<-lims[3:10,]     
+
+##Making the lims into numeric (and not factor)
+lims<-unfactor(lims) 
+
+##Function to create the 8 dummy variables per patients. Checking if the reading is less than min of a healthy patients or more than the max of a healthy patient. If it is outside the bounds 1, otherwise 0.
+
+y<-function(i,data){ifelse(data[,i+2]<lims$min[i] | data[,i+2]>lims$max[i],1,0)}
+
+## Index i for 1 to number of rows (i.e. variables) in lims ==8
+i<-1:nrow(lims)
+d_train<-sapply(i,y,data=train)       ##calculating the new variables for the train set
+d_test<-sapply(i,y,data=test)         ## Calculating the new variables for the test set
+
+
+##Calculating the total number of "normal values" for any given patient
+d_train<-rowSums(d_train)
+d_test<-rowSums(d_test)
+
+
+## Binding the original datasets with the new variable we created
+train<-cbind(train,d_train)
+test<-cbind(test,d_test)
+train<-train%>%
+  rename(Number_of_extremes=d_train)
+
+test<-test%>%
+  rename(Number_of_extremes=d_test)
+
+
+## Removing the un-needed variables
+rm(d_test,d_train,i,lims)
+```
+
+The two histograms showing the distribution of Extreme values for healthy and sick individuals are depicted in the following figures:
+
+For the train set:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE,fig.height=2}
+
+p0<-train%>%
+  filter(y==0)%>%
+  ggplot(aes(Number_of_extremes))+
+  geom_histogram()+
+  xlim(-1,6)
+
+p1<-train%>%
+  filter(y==1)%>%
+  ggplot(aes(Number_of_extremes))+
+  geom_histogram()+
+  xlim(-1,6)
+
+ggarrange(p0,p1,ncol=2,nrow=1)
+
+```
+
+For the test set:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE,fig.height=2}
+
+p0<-test%>%
+  filter(y==0)%>%
+  ggplot(aes(Number_of_extremes))+
+  geom_histogram()+
+  xlim(-1,6)
+
+p1<-test%>%
+  filter(y==1)%>%
+  ggplot(aes(Number_of_extremes))+
+  geom_histogram()+
+  xlim(-1,6)
+
+ggarrange(p0,p1,ncol=2,nrow=1)
+
+```
+
+As can be seen for the train set, we have, as expected, only 0 values for the healthy individuals, since the bounds we used were created from this set. On the other hand, for individuals with liver disease, we see a different distribution (but also a lot of 0 values i.e. all blood test values within what we defined as normal range).
+
+On the test set, we observe similar results, as the train set, but we should underline the fact that there was a chance to observe a different distribution (not all 0s) for healthy individuals, as the values for the bounds were created based on the train set and were agnostic of any "extreme" values in the test set.
+
+
+## Features of our models
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+## Our final feature selection includes: Age, Gender, Total Bilirubin, Alkaline Phosphotase, Aspartate Aminostransferase, Total Proteins and Albumin/Globulin Ratio, Number of extremes
+
+train<-train[,c(1,2,3,5,7,8,10,11,12)]
+test<-test[,c(1,2,3,5,7,8,10,11,12)]
 ```
 
 Based on our feature engineering, the final features for our models are:
@@ -562,11 +700,44 @@ Based on our feature engineering, the final features for our models are:
 * Aspartate Aminotransferase
 * Total Proteins
 * Albumin to Blobulin ratio
+* Number of extremes
 
 \newpage
 # Analysis: Model building and testing
 
 In this section, we are presenting the different models developed and their performance. We are also discussing the metric used for evaluation and the validation method for tuning.
+
+## Data pre-processing
+
+Before implementing any ML algorithms, we are going to scale and center the data with the help of the **Preprocess** function on caret.
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+## Preprocessing the data: Center and scaling
+
+preProcValues <- preProcess(train, method = c("center", "scale"))
+
+## Calculate thew new centered/scaled values
+trainTransformed <- predict(preProcValues, train)
+testTransformed <- predict(preProcValues, test)
+
+## Set the train and test set equal to the processed data.
+train<-trainTransformed
+test<-testTransformed
+```
+
+In the following table, a sample of our scaled data is presented:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+train%>%
+  head(5)%>%
+  kable(align=rep('c', ncol(train))) %>%
+   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                 position = "center",
+                 font_size = 8,
+                 full_width = FALSE,
+                 latex_options = "scale_down")
+```
 
 ## Metric for performance
 
@@ -622,10 +793,18 @@ confusionMatrix(y_hat_naive,test$y)$overall["Accuracy"]
 
 Results<-inner_join(Res_Naive,F_Naive, by = "method")
 
-Results %>%
+
+```
+
+Finally, the confusion matrix is:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_hat_naive,test$y)$table%>%
   kable()
 
 ```
+
 
 ## Model 2: Classification tree
 
@@ -668,6 +847,15 @@ ifelse(is.na(F_meas(y_hat_tree,test$y)),paste0("Not defined"), paste0(F_meas(y_h
 
 The classification tree appears to produce the same results, as our naive method and is therefore not an improvement.
 
+Finally, the confusion matrix is:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_hat_tree,test$y)$table%>%
+  kable()
+
+```
+
 The results so far:
 
 ```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
@@ -683,6 +871,7 @@ Results %>%
 
 ## Model 3: Neural network
 
+In this model, we are building a neural network.
 
 ```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE, include = FALSE}
 ## Neural network
@@ -720,7 +909,17 @@ ifelse(is.na(F_meas(y_hat_nn,test$y)),paste0("Not defined"), paste0(F_meas(y_hat
 
 ```
 
-The Neural network, similar to the CART produces the same results, as our naive method and is therefore not an improvement.
+
+Finally, the confusion matrix is:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_hat_nn,test$y)$table%>%
+  kable()
+
+```
+
+The Neural network, similar to the CART correctly classifies all individuals with liver disease but also 5 individuals who do not have a liver disease and is therefore an improvement over both Naive method and CART.
 
 The results so far:
 
@@ -737,7 +936,9 @@ Results %>%
 
 ## Model 4: Adaptive boosting (adaboost)
 
-```{r, echo=FALSE, eval = FALSE, warning=FALSE, message=FALSE, include = FALSE}
+For our fourth model, we are implementing an adaptive boosting algorithm
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE, include = FALSE}
 
 set.seed(1)
 grid<-expand.grid(nIter=seq(50,250,50),method="adaboost")     ##Tuning for number of trees
@@ -759,7 +960,7 @@ F_ADA<-data.frame(method="Ada boost",F1=F_meas(y_hat_ada,test$y))
 
 The accuracy of this model is:
 
-```{r, echo=FALSE, eval = FALSE, warning=FALSE, message=FALSE}
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
 
 confusionMatrix(y_hat_ada,test$y)$overall["Accuracy"]
 
@@ -767,13 +968,21 @@ confusionMatrix(y_hat_ada,test$y)$overall["Accuracy"]
 
 The F1 score is: 
 
-```{r, echo=FALSE, eval = FALSE, warning=FALSE, message=FALSE}
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
 
 ifelse(is.na(F_meas(y_hat_ada,test$y)),paste0("Not defined"), paste0(F_meas(y_hat_ada,test$y)))
 
 ```
 
-The adaboost algorithm has an impressive improvement in accuracy, but has also missclassified 2 patients. 
+The adaboost algorithm has an impressive improvement in accuracy, but has also missclassified 4 patients. This can be seen in the confusion matrix:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_hat_ada,test$y)$table%>%
+  kable()
+
+```
+
 
 The results so far:
 
@@ -791,36 +1000,65 @@ Results %>%
 
 ## Model 5: Gradient boosting
 
-```{r, echo=FALSE, eval = FALSE, warning=FALSE, message=FALSE, include = FALSE}
+In this model, we are implementing a gradient boosting algorithm and tuning 3 out of the 4 parameters.
 
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE, include = FALSE}
 
+set.seed(1)
+grid<-expand.grid(n.trees=seq(50,250,50),
+                  interaction.depth=1,
+                  shrinkage=seq(0.1,0.5,0.1),
+                  n.minobsinnode=seq(5,20,1))
+
+gbmFit1 <- train(y ~ ., data = train, 
+                 method = "gbm", 
+                 trControl = control,
+                 verbose = TRUE,
+                 tuneGrid = grid,
+                 metric=metric)
+
+y_gbm<-predict(gbmFit1,test)
+confusionMatrix(y_gbm,test$y)$overall["Accuracy"]
+
+Res_GBM<-data.frame(method="GBM",Accuracy=confusionMatrix(y_gbm,test$y)$overall["Accuracy"])
+
+F_GBM<-data.frame(method="GBM",F1=F_meas(y_gbm,test$y))
 
 ```
 
-
 The accuracy of this model is:
 
-```{r, echo=FALSE, eval = FALSE, warning=FALSE, message=FALSE}
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
 
-confusionMatrix(y_hat_ada,test$y)$overall["Accuracy"]
+confusionMatrix(y_gbm,test$y)$overall["Accuracy"]
 
 ```
 
 The F1 score is: 
 
-```{r, echo=FALSE, eval = FALSE, warning=FALSE, message=FALSE}
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
 
-ifelse(is.na(F_meas(y_hat_ada,test$y)),paste0("Not defined"), paste0(F_meas(y_hat_ada,test$y)))
+ifelse(is.na(F_meas(y_gbm,test$y)),paste0("Not defined"), paste0(F_meas(y_gbm,test$y)))
 
 ```
 
-The adaboost algorithm has an impressive improvement in accuracy, but has also missclassified 2 patients. 
+Unfortunately, this algorithm is slightly better than the naive method and does not provide any further improvement.
+
+The confusion matrix is shown in the following table:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_gbm,test$y)$table%>%
+  kable()
+
+```
+
 
 The results so far:
 
 ```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
 
-Results1<-inner_join(Res_ADA,F_ADA, by = "method")
+Results1<-inner_join(Res_GBM,F_GBM, by = "method")
 Results<-rbind(Results,Results1)
 rm(Results1)
 
@@ -828,3 +1066,373 @@ Results %>%
   kable()
 
 ```
+
+
+
+## Model 6: Support vector machine
+
+For this model, we are implementing an SVM method with a Radial kernel.
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE, include = FALSE}
+
+set.seed(1)
+fitsvm<-train(y~.,
+              data=train,
+              method="svmRadial",
+              trControl=control,
+              metric=metric)
+y_hat_svm<-predict(fitsvm,test)
+confusionMatrix(y_hat_svm,test$y)$overall["Accuracy"]
+
+Res_SVM<-data.frame(method="SVM",Accuracy=confusionMatrix(y_hat_svm,test$y)$overall["Accuracy"])
+
+F_SVM<-data.frame(method="SVM",F1=F_meas(y_hat_svm,test$y))
+
+```
+
+The accuracy of this model is:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_hat_svm,test$y)$overall["Accuracy"]
+
+```
+
+The F1 score is: 
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+ifelse(is.na(F_meas(y_hat_svm,test$y)),paste0("Not defined"), paste0(F_meas(y_hat_svm,test$y)))
+
+```
+
+The SVM algorithm produces exactly the same results as our naive method, and is therefore not an improvement.
+
+The confusion matrix is shown in the following table:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_hat_svm,test$y)$table%>%
+  kable()
+
+```
+
+
+The results so far:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+Results1<-inner_join(Res_SVM,F_SVM, by = "method")
+Results<-rbind(Results,Results1)
+rm(Results1)
+
+Results %>%
+  kable()
+
+```
+
+
+
+## Model 7: K nearest neighbors
+
+For the K-nearest neighbors, we will be experimenting with the value k (number of neighbors selected).
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE, include = FALSE}
+
+set.seed(1)
+fitknn<-train(y~.,
+              data=train,
+              method="knn",
+              tuneGrid=expand.grid(k=seq(1:100)),
+              trControl=control,
+              metric=metric)
+
+y_hat_knn<-predict(fitknn,test)
+confusionMatrix(y_hat_knn,test$y)$overall["Accuracy"]
+
+Res_KNN<-data.frame(method="KNN",Accuracy=confusionMatrix(y_hat_knn,test$y)$overall["Accuracy"])
+
+F_KNN<-data.frame(method="KNN",F1=F_meas(y_hat_knn,test$y))
+
+```
+
+The accuracy of this model is:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_hat_knn,test$y)$overall["Accuracy"]
+
+```
+
+The F1 score is: 
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+ifelse(is.na(F_meas(y_hat_knn,test$y)),paste0("Not defined"), paste0(F_meas(y_hat_knn,test$y)))
+
+```
+
+
+The confusion matrix is shown in the following table:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_hat_knn,test$y)$table%>%
+  kable()
+
+```
+
+The KNN algorithm has the same accuracy as our naive method, but does so by classifying two healthy individuals correctly and missclassifying two sick individuals as healthy. Therefore, it is worse in terms of F1.
+
+The results so far:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+Results1<-inner_join(Res_KNN,F_KNN, by = "method")
+Results<-rbind(Results,Results1)
+rm(Results1)
+
+Results %>%
+  kable()
+
+```
+
+
+## Model 8: Random Forest
+
+For the random forest algorithm, we are tuning the mtry parameter.
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE, include = FALSE}
+
+set.seed(1)
+fitrf<-train(y~.,
+             data=train,
+             method="rf",
+             tuneGrid=expand.grid(mtry=seq(3,20,1)),
+             trControl=control,
+             metric=metric)
+
+y_hat_rf<-predict(fitrf,test)
+confusionMatrix(y_hat_rf,test$y)$overall["Accuracy"]
+
+Res_RF<-data.frame(method="Random forest",Accuracy=confusionMatrix(y_hat_rf,test$y)$overall["Accuracy"])
+
+F_RF<-data.frame(method="Random forest",F1=F_meas(y_hat_rf,test$y))
+
+```
+
+The accuracy of this model is:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_hat_rf,test$y)$overall["Accuracy"]
+
+```
+
+The F1 score is: 
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+ifelse(is.na(F_meas(y_hat_rf,test$y)),paste0("Not defined"), paste0(F_meas(y_hat_rf,test$y)))
+
+```
+
+
+The confusion matrix is shown in the following table:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_hat_rf,test$y)$table%>%
+  kable()
+
+```
+
+The RF algorithm has a big improvement in terms of accuracy, but 3 patients are also missclassified as healthy.
+
+The results so far:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+Results1<-inner_join(Res_RF,F_RF, by = "method")
+Results<-rbind(Results,Results1)
+rm(Results1)
+
+Results %>%
+  kable()
+
+```
+
+
+## Model 9: Extreme Gradiant boosting (Xgboost)
+
+In this section, we are going to implement an extreme gradient boosting algorithm. Due to its complexity and computing time, we are only tuning some of the parameters and keeping the rest fixed.
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE, include = FALSE}
+
+set.seed(1)
+tune.grid <- expand.grid(eta = c(0.05, 0.075, 0.1),
+                         nrounds = c(50, 75, 100),
+                         max_depth = 6:8,
+                         min_child_weight = c(2.0, 2.25, 2.5),
+                         colsample_bytree = c(0.3, 0.4, 0.5),
+                         gamma = 0,
+                         subsample = 1)
+
+fitxgb <- train(y ~ ., 
+                  data = train,
+                  method = "xgbTree",
+                  tuneGrid = tune.grid,
+                  trControl = control,
+                  metric=metric)
+
+y_xgb<-predict(fitxgb,test)
+confusionMatrix(y_xgb,test$y)$overall["Accuracy"]
+
+Res_XGB<-data.frame(method="XGBoost",Accuracy=confusionMatrix(y_xgb,test$y)$overall["Accuracy"])
+
+F_XGB<-data.frame(method="XGBoost",F1=F_meas(y_xgb,test$y))
+
+```
+
+The accuracy of this model is:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_xgb,test$y)$overall["Accuracy"]
+
+```
+
+The F1 score is: 
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+ifelse(is.na(F_meas(y_xgb,test$y)),paste0("Not defined"), paste0(F_meas(y_xgb,test$y)))
+
+```
+
+
+The confusion matrix is shown in the following table:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_xgb,test$y)$table%>%
+  kable()
+
+```
+
+The algorithm is a slight improvement over our naive method, in terms of accuracy, but not nearly as good as the Random forest algorithm.
+
+The results so far are:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+Results1<-inner_join(Res_XGB,F_XGB, by = "method")
+Results<-rbind(Results,Results1)
+rm(Results1)
+
+Results %>%
+  kable()
+
+```
+
+## Model 10: Random forest with the original unprocessed dataset
+
+In this final model, we are going to re-train our Random Forest algorithm (best performing one) but this time we are going to use the unprocessed dataset with all the original variables, and excluding the number of extreme values we created.
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE, include = FALSE}
+
+set.seed(1)
+fitrfS<-train(y~.,
+             data=trainS,
+             method="rf",
+             tuneGrid=expand.grid(mtry=seq(3,20,1)),
+             trControl=control,
+             metric=metric)
+
+y_hat_rfS<-predict(fitrfS,testS)
+confusionMatrix(y_hat_rfS,testS$y)$overall["Accuracy"]
+
+Res_RF_S<-data.frame(method="Random forest Unprocessed",Accuracy=confusionMatrix(y_hat_rfS,testS$y)$overall["Accuracy"])
+
+F_RF_S<-data.frame(method="Random forest",F1=F_meas(y_hat_rfS,testS$y))
+
+```
+
+The accuracy of this model is:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_hat_rfS,testS$y)$overall["Accuracy"]
+
+```
+
+The F1 score is: 
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+ifelse(is.na(F_meas(y_hat_rfS,testS$y)),paste0("Not defined"), paste0(F_meas(y_hat_rfS,testS$y)))
+
+```
+
+
+The confusion matrix is shown in the following table:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+confusionMatrix(y_hat_rfS,testS$y)$table%>%
+  kable()
+
+```
+
+The RF algorithm with the unprocessed dataset is not nearly as good as our implementation, proving that the steps we took in feature engineering were beneficial in the model development phase.
+
+The final results are:
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+Results1<-inner_join(Res_RF_S,F_RF_S, by = "method")
+Results<-rbind(Results,Results1)
+rm(Results1)
+
+Results %>%
+  kable()
+
+```
+
+## Variable importance in the Random forest model (feature engineered dataset)
+
+Before concluding this session, we are going to plot the variable importance of our final algorithm.
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+
+plot(varImp(fitrf),
+     main="Variable importance plot Random Forest",
+     xlab="Variables",
+     ylab="Variable importance")
+
+```
+
+\newpage
+# Conclusion
+
+
+In this chapter, we will be discussing our methods, models and results, explain some of the limitations of our research and conclude this project with some directions for future research.
+
+## Discussion of results
+
+In chapter 5, we have developed ten machine learning models (9 original models + 1 model for testing feature engineering steps). From those models, the best performing one was the Random forest, with the second best model being 2.5% less accurate (adaboost). In terms of missclassifying sick individuals as healthy, our model managed to missclassify only 3 out of the 83 people with a liver disease, which is quite accurate. Compared to our naive approach (classify all people as sick), we see a trade-off: the increase in accuracy vs. the incorectly classified people. Given the fact that it is a medical application and false negatives are more important than false positives, our naive approach is only accurate 71% of the times (mainly due to the imbalanced dataset) and therefore we suggest that the RF classifier is an improvement over the naive method.
+
+From our analysis, we can also see that the variable, which had the biggest impact in the model improvement, was the age. This finding is counter-intuitive as our EDA did not show a strong relationship between the age and the existence of a liver disease. Additionally, the variable we have created has low importance (8%) and the gender appears to play no role in detecting the liver disease (in line with literature). Interestingly, using all the variables as features proved to be less valueable than using only some of them (conveying different type of information).
+
+Overall, the best performing model had a substantial improvement (13%) over our first benchmark model (Naive method) and predicts with high accuracy the existence of a liver disease in the unseen test set (Accuracy = 81.03%).
+
+## Limitations
+
+The algorithm and research presented, yielded some interesting results but are not without limitations. To begin with, for some of the algorithms, due to the computation time, only a small subset of parameters was studied; however, we could potentially use virtual machines for estimating a larger range of parameters, which could lead to further improvements. Furthermore, as part of the research, we only implemented a small number of algorithms. In that regard, an alternative algorithm might prove to be more robust in predicting the existence of liver disease in people. Finally, given that the dataset is based on the records of Indian patients, the generelizability of the methodology presented needs to be tested with other (international) patients.
+
+##Further research
+
+In this project, several methods for creating a liver disease classifier have been studied, with decent results. In future research, new methods for estimating the existence of liver disease should be examined and benchmarked against the original models. Additionally, we propose a more in-depth investigation of the age effect, to identify some evidence on the importance of this feature. Finally, despite the low importance of the number of extreme blood test results that was developed, some tuning on what should be considered "normal range of values" should also be examined.
+
+
+
