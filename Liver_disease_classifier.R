@@ -25,6 +25,7 @@ if(!require(e1071)) install.packages("e1071", repos = "http://cran.us.r-project.
 if(!require(gbm)) install.packages("gbm", repos = "http://cran.us.r-project.org")
 if(!require(doSNOW)) install.packages("doSNOW", repos = "http://cran.us.r-project.org")
 if(!require(fastAdaboost)) install.packages("fastAdaboost", repos = "http://cran.us.r-project.org")
+if(!require(kernlab)) install.packages("kernlab", repos = "http://cran.us.r-project.org")
 
 # Library loading
 
@@ -51,6 +52,7 @@ library(e1071)
 library(gbm)
 library(doSNOW)
 library(fastAdaboost)
+library(kernlab)
 
 
 # Dataset loading
