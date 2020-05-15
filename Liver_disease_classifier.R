@@ -23,6 +23,7 @@ if(!require(varhandle)) install.packages("varhandle", repos = "http://cran.us.r-
 if(!require(reshape2)) install.packages("reshape2", repos = "http://cran.us.r-project.org")
 if(!require(e1071)) install.packages("e1071", repos = "http://cran.us.r-project.org")
 if(!require(gbm)) install.packages("gbm", repos = "http://cran.us.r-project.org")
+if(!require(doSNOW)) install.packages("doSNOW", repos = "http://cran.us.r-project.org")
 
 # Library loading
 
@@ -47,7 +48,7 @@ library(varhandle)
 library(reshape2)
 library(e1071)
 library(gbm)
-
+library(doSNOW)
 
 
 # Dataset loading
@@ -263,6 +264,110 @@ rm(cormatrix,corvar)
 
 
 
+## Before doing any manipulation to the original dataset, we are going to save them. We will utilize them for benchmarking later in the process.
+trainS<-train
+testS<-test
+
+
+
+
+
+
+## Adding a new variable: Number of extremes for blood test results
+
+## it seems that most sick patients have values that are much more extreme than that of healthy patients. It might be interesting to explore for the sick patients, how many values of the continuous variables are outside the normal range (normal range is defined as the range observed in healthy patients.)
+
+##dummy variable = number of "normal values for other variables". If a patient has a value within the range of a normal patient y=0. In the end we sum the values of these 8 dummy variables for the total number of out-of-bounds variables.
+
+
+
+## Find the min and max for healthy patients     
+
+## the range is calculated ONLY ON THE TRAIN DATA. We do not use the unseen data for our calculations
+
+min<-apply(train[train$y==0,],2,min)
+max<-apply(train[train$y==0,],2,max)
+
+## Make these limits into 1 dataframe
+lims<-data.frame(min=min,max=max)
+
+##removing min and max
+rm(min,max)
+
+##Removing age,gender and target variable   --> We only care for the blood results
+lims<-lims[3:10,]     
+
+##Making the lims into numeric (and not factor)
+lims<-unfactor(lims) 
+
+##Function to create the 8 dummy variables per patients. Checking if the reading is less than min of a healthy patients or more than the max of a healthy patient. If it is outside the bounds 1, otherwise 0.
+
+y<-function(i,data){ifelse(data[,i+2]<lims$min[i] | data[,i+2]>lims$max[i],1,0)}
+
+## Index i for 1 to number of rows (i.e. variables) in lims ==8
+i<-1:nrow(lims)
+d_train<-sapply(i,y,data=train)       ##calculating the new variables for the train set
+d_test<-sapply(i,y,data=test)         ## Calculating the new variables for the test set
+
+
+##Calculating the total number of "normal values" for any given patient
+d_train<-rowSums(d_train)
+d_test<-rowSums(d_test)
+
+
+## Binding the original datasets with the new variable we created
+train<-cbind(train,d_train)
+test<-cbind(test,d_test)
+train<-train%>%
+  rename(Number_of_extremes=d_train)
+
+test<-test%>%
+  rename(Number_of_extremes=d_test)
+
+
+## Removing the un-needed variables
+rm(d_test,d_train,i,lims)
+
+
+## Histograms for number of extremes in healthy and sick individuals:
+
+## In the train set:
+
+p0<-train%>%
+  filter(y==0)%>%
+  ggplot(aes(Number_of_extremes))+
+  geom_histogram()+
+  xlim(-1,6)
+
+p1<-train%>%
+  filter(y==1)%>%
+  ggplot(aes(Number_of_extremes))+
+  geom_histogram()+
+  xlim(-1,6)
+
+
+## Arranging the plots
+rm(p0,p1)
+
+p0<-test%>%
+  filter(y==0)%>%
+  ggplot(aes(Number_of_extremes))+
+  geom_histogram()+
+  xlim(-1,6)
+
+p1<-test%>%
+  filter(y==1)%>%
+  ggplot(aes(Number_of_extremes))+
+  geom_histogram()+
+  xlim(-1,6)
+
+## Arranging the plots
+ggarrange(p0,p1,ncol=2,nrow=1)
+
+## removing the subplots
+rm(p0,p1)
+
+
 
 ## Feature selection
 
@@ -329,11 +434,24 @@ rm(p1,p2)
 
 ## For albumine, since its highly correlated with both Albumin to Globulin ratio and Total proteins, we will remove it.
 
-## Our final feature selection includes: Age, Gender, Total Bilirubin, Alkaline Phosphotase, Aspartate Aminostransferase, Total Proteins and Albumin/Globulin Ratio
+## Our final feature selection includes: Age, Gender, Total Bilirubin, Alkaline Phosphotase, Aspartate Aminostransferase, Total Proteins and Albumin/Globulin Ratio and the Number of extremes we created.
 
-train<-train[,c(1,2,3,5,7,8,10,11)]
-test<-test[,c(1,2,3,5,7,8,10,11)]
+train<-train[,c(1,2,3,5,7,8,10,11,12)]
+test<-test[,c(1,2,3,5,7,8,10,11,12)]
 
+
+
+## Preprocessing the data: Center and scaling
+
+preProcValues <- preProcess(train, method = c("center", "scale"))
+
+## Calculate thew new centered/scaled values
+trainTransformed <- predict(preProcValues, train)
+testTransformed <- predict(preProcValues, test)
+
+## Set the train and test set equal to the processed data.
+train<-trainTransformed
+test<-testTransformed
 
 
 
@@ -450,7 +568,7 @@ Results_GBM<-inner_join(Res_GBM,F_GBM, by = "method")
 set.seed(1)
 fitsvm<-train(y~.,
               data=train,
-              method="svmLinear",
+              method="svmRadial",
               trControl=control,
               metric=metric)
 y_hat_svm<-predict(fitsvm,test)
@@ -536,3 +654,30 @@ Results<-rbind(Results_ADA,Results_CART,Results_GBM,Results_KNN,Results_Naive,Re
 rm(Res_ADA,Res_CART,Res_GBM,Res_KNN,Res_Naive,Res_NN,Res_RF,Res_SVM,Res_XGB)
 rm(F_ADA,F_CART,F_GBM,F_KNN,F_Naive,F_NN,F_RF,F_SVM,F_XGB)
 
+
+
+
+## Best model = Random forest 81.03% accuracy
+
+
+## Given that the best model is a Random forest, we are going to retrain our model but with the original unprocessed data (unscaled and without the extra variable we created, but with the variables we removed) to see if our features added value to the model)
+
+
+## Random forest model with original dataset
+
+set.seed(1)
+fitrfS<-train(y~.,
+             data=trainS,                             ## using trainS and not train dataset
+             method="rf",
+             tuneGrid=expand.grid(mtry=seq(3,20,1)),
+             trControl=control,
+             metric=metric)
+
+y_hat_rf_S<-predict(fitrfS,testS)
+confusionMatrix(y_hat_rf_S,testS$y)$overall["Accuracy"]
+
+Res_RF_S<-data.frame(method="Random forest",Accuracy=confusionMatrix(y_hat_rf_S,testS$y)$overall["Accuracy"])
+
+F_RF_S<-data.frame(method="Random forest",F1=F_meas(y_hat_rf_S,testS$y))
+
+Results_RF_S<-inner_join(Res_RF_S,F_RF_S, by = "method")
